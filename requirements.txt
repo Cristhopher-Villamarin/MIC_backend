@@ -1,0 +1,12 @@
+fastapi==0.115.0
+uvicorn==0.30.6
+pandas==2.2.3
+openpyxl==3.1.5
+networkx==3.3
+nltk==3.9.1
+nrclex==3.0.0
+textblob==0.18.0.post0
+numpy==2.1.1
+scikit-learn==1.5.2
+matplotlib==3.9.2
+python-multipart==0.0.9
