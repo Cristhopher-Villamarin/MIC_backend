@@ -1,4 +1,9 @@
 # main.py
+import nltk
+nltk.download("punkt", quiet=True)
+nltk.download("wordnet", quiet=True)
+nltk.download("stopwords", quiet=True)
+
 from fastapi import FastAPI, Form, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
