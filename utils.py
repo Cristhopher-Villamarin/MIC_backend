@@ -3,34 +3,28 @@
 Herramientas de análisis emocional + motor de propagación
 ---------------------------------------------------------
 
-• EmotionAnalyzer  → vector de 10 dimensiones para un texto
+• EmotionAnalyzer → vector de 10 dimensiones para un texto
 • PropagationEngine
     · build(edges_df, states_df)
     · propagate(seed_user, message, max_steps)
       ↳ devuelve (vector_dict, log_serial)
+• SimplePropagationEngine
+    · build(links_df, nodes_df)
+    · propagate(seed_user, message, max_steps)
+      ↳ devuelve log_serial (sin emociones)
 
-El log_serial tiene esta forma:
-
-  # Publicación inicial
+El log_serial para SimplePropagationEngine tiene esta forma:
   {
     "t": 0,
     "sender": null,
     "receiver": "user_2",
-    "action": "publish",
-    "vector_sent": [ ... ]                # ← vector del mensaje
+    "action": "publish"
   }
-
-  # Interacciones posteriores
   {
     "t": 1,
     "sender": "user_2",
     "receiver": "user_53",
-    "action": "modificar",
-    "vector_sent": [ ... ],               # vector que recibió el usuario
-    "sim_in": 0.66,
-    "sim_out": 0.12,
-    "state_in_before": [ ... ],
-    "state_in_after":  [ ... ]
+    "action": "forward"
   }
 """
 
@@ -56,7 +50,6 @@ nltk.download("punkt", quiet=True)
 nltk.download("wordnet", quiet=True)
 nltk.download("stopwords", quiet=True)
 
-
 # ─────────────────────── ANALIZADOR EMOCIONAL ───────────────────────
 class EmotionAnalyzer:
     def __init__(self) -> None:
@@ -75,7 +68,6 @@ class EmotionAnalyzer:
             "joy",
         ]
 
-    # ---------- limpieza simple -------------------------------------
     def _clean(self, text: str) -> str:
         text = re.sub(r"@[A-Za-z0-9_]+", "", text)
         text = re.sub(r"#", "", text)
@@ -94,7 +86,6 @@ class EmotionAnalyzer:
         ]
         return " ".join(tokens)
 
-    # ---------- vector de 10 dimensiones ----------------------------
     def vector(self, text: str) -> np.ndarray:
         clean = self._clean(text)
         blob = TextBlob(clean)
@@ -116,7 +107,6 @@ class EmotionAnalyzer:
     def as_dict(self, text: str) -> Dict[str, float]:
         return dict(zip(self.labels, self.vector(text).tolist()))
 
-
 # ─────────────────────── AUXILIARES ────────────────────────────────
 EMOTION_COLS: List[str] = [
     "subjectivity",
@@ -131,10 +121,8 @@ EMOTION_COLS: List[str] = [
     "joy",
 ]
 
-
 def _col(prefix: str) -> List[str]:
     return [f"{prefix}_{c}" for c in EMOTION_COLS]
-
 
 ALPHA_BY_PROFILE: Dict[str, float] = {
     "High-Credibility Informant": 0.30,
@@ -142,7 +130,6 @@ ALPHA_BY_PROFILE: Dict[str, float] = {
     "Mobilisation-Oriented Catalyst": 0.70,
     "Emotionally Exposed Participant": 0.60,
 }
-
 
 def _decision(profile: str, sim_in: float, sim_out: float) -> str:
     if profile == "High-Credibility Informant":
@@ -173,23 +160,19 @@ def _decision(profile: str, sim_in: float, sim_out: float) -> str:
         )
     raise ValueError(f"Perfil desconocido: {profile!r}")
 
-
 def _ema(prev_vec: np.ndarray, new_vec: np.ndarray, alpha: float) -> np.ndarray:
     return alpha * new_vec + (1.0 - alpha) * prev_vec
 
-
-# ─────────────────────── MOTOR DE PROPAGACIÓN ──────────────────────
+# ─────────────────────── MOTOR DE PROPAGACIÓN ORIGINAL ─────────────
 class PropagationEngine:
     def __init__(self) -> None:
         self.analyzer = EmotionAnalyzer()
         self.graph: nx.DiGraph | None = None
-
         self.state_in: Dict[str, np.ndarray] = {}
         self.state_out: Dict[str, np.ndarray] = {}
         self.alpha_u: Dict[str, float] = {}
         self.profile_u: Dict[str, str] = {}
 
-    # ---------- Construcción de la red ------------------------------
     def build(
         self,
         edges_df: pd.DataFrame,
@@ -224,7 +207,6 @@ class PropagationEngine:
             self.alpha_u[user] = ALPHA_BY_PROFILE[perfil]
             self.profile_u[user] = perfil
 
-    # ---------- Simulación ------------------------------------------
     def propagate(
         self, seed_user: str, message: str, max_steps: int = 4
     ) -> Tuple[Dict[str, float], List[Dict[str, Any]]]:
@@ -246,16 +228,16 @@ class PropagationEngine:
                 # NO se registra ninguna fila, solo se difunde a los seguidores
                 for follower in self.graph.predecessors(receiver):
                     agenda.append((t, receiver, follower, v))
-                continue  # ← salta al siguiente ciclo
+                continue
 
             # ─── Resto de interacciones ────────────────────────────
             prev_in = self.state_in[receiver].copy()
-            sim_in  = cosine_similarity([v], [prev_in])[0, 0]
+            sim_in = cosine_similarity([v], [prev_in])[0, 0]
             sim_out = cosine_similarity([v], [self.state_out[receiver]])[0, 0]
-            action  = _decision(self.profile_u[receiver], sim_in, sim_out)
+            action = _decision(self.profile_u[receiver], sim_in, sim_out)
 
-            alpha   = self.alpha_u[receiver]
-            new_in  = _ema(prev_in, v, alpha)
+            alpha = self.alpha_u[receiver]
+            new_in = _ema(prev_in, v, alpha)
             self.state_in[receiver] = new_in
 
             if action in {"reenviar", "modificar"} and t < max_steps:
@@ -273,8 +255,70 @@ class PropagationEngine:
                     "sim_in": round(sim_in, 3),
                     "sim_out": round(sim_out, 3),
                     "state_in_before": np.round(prev_in, 3).tolist(),
-                    "state_in_after":  np.round(new_in, 3).tolist(),
+                    "state_in_after": np.round(new_in, 3).tolist(),
                 }
-            )           
+            )
 
         return vector_dict, LOG
+
+# ─────────────────────── MOTOR DE PROPAGACIÓN SIMPLE (RIP-DSN) ────
+class SimplePropagationEngine:
+    def __init__(self) -> None:
+        self.graph: nx.DiGraph | None = None
+        self.nodes: set = set()
+
+    def build(
+        self,
+        links_df: pd.DataFrame,
+        nodes_df: pd.DataFrame,
+        network_id: int | None = None,
+    ) -> None:
+        if network_id is not None and "network_id" in links_df.columns:
+            links_df = links_df.query("network_id == @network_id")
+        if network_id is not None and "network_id" in nodes_df.columns:
+            nodes_df = nodes_df.query("network_id == @network_id")
+
+        self.graph = nx.from_pandas_edgelist(
+            links_df, source="source", target="target", create_using=nx.DiGraph
+        )
+        self.nodes = set(nodes_df["node"].astype(str))
+
+    def propagate(
+        self, seed_user: str, message: str, max_steps: int = 4
+    ) -> List[Dict[str, Any]]:
+        if self.graph is None:
+            raise RuntimeError("Primero llama a build()")
+        if seed_user not in self.nodes:
+            raise ValueError(f"Usuario inicial {seed_user} no encontrado en la red")
+
+        # agenda: (t, sender, receiver)
+        agenda = deque([(0, None, seed_user)])
+        LOG: List[Dict[str, Any]] = []
+
+        visited = set()
+
+        while agenda:
+            t, sender, receiver = agenda.popleft()
+
+            # Evitar ciclos
+            if receiver in visited:
+                continue
+            visited.add(receiver)
+
+            # Registrar en el log
+            LOG.append(
+                {
+                    "t": t,
+                    "sender": sender,
+                    "receiver": receiver,
+                    "action": "publish" if sender is None else "forward",
+                }
+            )
+
+            # Difundir a los seguidores
+            if t < max_steps:
+                for follower in self.graph.predecessors(receiver):
+                    if follower in self.nodes:
+                        agenda.append((t + 1, receiver, follower))
+
+        return LOG
