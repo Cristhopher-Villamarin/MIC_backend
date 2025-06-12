@@ -1,33 +1,3 @@
-# utils.py
-"""
-Herramientas de análisis emocional + motor de propagación
----------------------------------------------------------
-
-• EmotionAnalyzer → vector de 10 dimensiones para un texto
-• PropagationEngine
-    · build(edges_df, states_df)
-    · propagate(seed_user, message, max_steps)
-      ↳ devuelve (vector_dict, log_serial)
-• SimplePropagationEngine
-    · build(links_df, nodes_df)
-    · propagate(seed_user, message, max_steps)
-      ↳ devuelve log_serial (sin emociones)
-
-El log_serial para SimplePropagationEngine tiene esta forma:
-  {
-    "t": 0,
-    "sender": null,
-    "receiver": "user_2",
-    "action": "publish"
-  }
-  {
-    "t": 1,
-    "sender": "user_2",
-    "receiver": "user_53",
-    "action": "forward"
-  }
-"""
-
 from __future__ import annotations
 
 import re
@@ -172,6 +142,7 @@ class PropagationEngine:
         self.state_out: Dict[str, np.ndarray] = {}
         self.alpha_u: Dict[str, float] = {}
         self.profile_u: Dict[str, str] = {}
+        self.history: Dict[str, List[np.ndarray]] = {}  # Historial para state_in y state_out
 
     def build(
         self,
@@ -191,6 +162,7 @@ class PropagationEngine:
         self.state_out.clear()
         self.alpha_u.clear()
         self.profile_u.clear()
+        self.history.clear()
 
         for user, row in states_df.iterrows():
             perfil = (
@@ -206,6 +178,7 @@ class PropagationEngine:
             self.state_out[user] = row[_col("out")].to_numpy(dtype=float)
             self.alpha_u[user] = ALPHA_BY_PROFILE[perfil]
             self.profile_u[user] = perfil
+            self.history[user] = [(self.state_in[user].copy(), self.state_out[user].copy())]
 
     def propagate(
         self, seed_user: str, message: str, max_steps: int = 4
@@ -216,6 +189,12 @@ class PropagationEngine:
         vec_msg = self.analyzer.vector(message)
         vector_dict = {k: round(v, 3) for k, v in zip(EMOTION_COLS, vec_msg)}
 
+        # Actualizar state_out del publicador inicial
+        alpha = self.alpha_u[seed_user]
+        prev_out = self.state_out[seed_user].copy()
+        self.state_out[seed_user] = _ema(prev_out, vec_msg, alpha)
+        self.history[seed_user].append((self.state_in[seed_user].copy(), self.state_out[seed_user].copy()))
+
         # agenda: (t, sender, receiver, vector_enviado)
         agenda = deque([(0, None, seed_user, vec_msg)])
         LOG: List[Dict[str, Any]] = []
@@ -225,13 +204,24 @@ class PropagationEngine:
 
             # ─── Publicación inicial ───────────────────────────────
             if sender is None:
-                # NO se registra ninguna fila, solo se difunde a los seguidores
+                # Registrar publicación inicial en el log
+                LOG.append(
+                    {
+                        "t": t,
+                        "publisher": receiver,
+                        "action": "publish",
+                        "vector_sent": np.round(v, 3).tolist(),
+                        "state_out_before": np.round(prev_out, 3).tolist(),
+                        "state_out_after": np.round(self.state_out[receiver], 3).tolist(),
+                    }
+                )
                 for follower in self.graph.predecessors(receiver):
                     agenda.append((t, receiver, follower, v))
                 continue
 
             # ─── Resto de interacciones ────────────────────────────
             prev_in = self.state_in[receiver].copy()
+            prev_out = self.state_out[receiver].copy()
             sim_in = cosine_similarity([v], [prev_in])[0, 0]
             sim_out = cosine_similarity([v], [self.state_out[receiver]])[0, 0]
             action = _decision(self.profile_u[receiver], sim_in, sim_out)
@@ -240,11 +230,16 @@ class PropagationEngine:
             new_in = _ema(prev_in, v, alpha)
             self.state_in[receiver] = new_in
 
-            if action in {"reenviar", "modificar"} and t < max_steps:
-                vec_to_send = v if action == "reenviar" else _ema(v, self.state_out[receiver], alpha)
-                for follower in self.graph.predecessors(receiver):
-                    agenda.append((t + 1, receiver, follower, vec_to_send))
+            # Actualizar state_out si la acción es reenviar o modificar
+            vec_to_send = v
+            if action in {"reenviar", "modificar"}:
+                vec_to_send = v if action == "reenviar" else _ema(v, prev_out, alpha)
+                self.state_out[receiver] = _ema(prev_out, vec_to_send, alpha)
 
+            # Actualizar historial
+            self.history[receiver].append((self.state_in[receiver].copy(), self.state_out[receiver].copy()))
+
+            # Registrar en el log
             LOG.append(
                 {
                     "t": t,
@@ -256,8 +251,15 @@ class PropagationEngine:
                     "sim_out": round(sim_out, 3),
                     "state_in_before": np.round(prev_in, 3).tolist(),
                     "state_in_after": np.round(new_in, 3).tolist(),
+                    "state_out_before": np.round(prev_out, 3).tolist(),
+                    "state_out_after": np.round(self.state_out[receiver], 3).tolist(),
                 }
             )
+
+            # Difundir a los seguidores
+            if action in {"reenviar", "modificar"} and t < max_steps:
+                for follower in self.graph.predecessors(receiver):
+                    agenda.append((t + 1, receiver, follower, vec_to_send))
 
         return vector_dict, LOG
 
