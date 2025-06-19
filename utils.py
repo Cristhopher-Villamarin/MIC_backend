@@ -263,6 +263,8 @@ class PropagationEngine:
 
         return vector_dict, LOG
 
+
+
 # ─────────────────────── MOTOR DE PROPAGACIÓN SIMPLE (RIP-DSN) ────
 class SimplePropagationEngine:
     def __init__(self) -> None:
@@ -297,15 +299,25 @@ class SimplePropagationEngine:
         agenda = deque([(0, None, seed_user)])
         LOG: List[Dict[str, Any]] = []
 
-        visited = set()
+        # Usar un diccionario para rastrear el número de veces que un nodo recibe el mensaje
+        received_count = {node: 0 for node in self.nodes}
 
         while agenda:
             t, sender, receiver = agenda.popleft()
 
-            # Evitar ciclos
-            if receiver in visited:
-                continue
-            visited.add(receiver)
+            # Incrementar el conteo de recepción
+            received_count[receiver] += 1
+            if received_count[receiver] > 1:
+                LOG.append(
+                    {
+                        "t": t,
+                        "sender": sender,
+                        "receiver": receiver,
+                        "action": "forward (repeated)",
+                        "note": f"Received {received_count[receiver]} times",
+                    }
+                )
+                continue  # Evitar propagación repetida
 
             # Registrar en el log
             LOG.append(
@@ -317,10 +329,14 @@ class SimplePropagationEngine:
                 }
             )
 
-            # Difundir a los seguidores
+            # Difundir solo a los predecesores (seguidores)
             if t < max_steps:
                 for follower in self.graph.predecessors(receiver):
-                    if follower in self.nodes:
+                    if follower in self.nodes and not any(
+                        l["sender"] == receiver and l["receiver"] == follower and l["action"] == "forward"
+                        for l in LOG
+                    ):
                         agenda.append((t + 1, receiver, follower))
 
         return LOG
+
