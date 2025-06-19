@@ -256,7 +256,7 @@ class PropagationEngine:
                 }
             )
 
-            # Difundir a los seguidores
+            # Difundir a los seguidoress
             if action in {"reenviar", "modificar"} and t < max_steps:
                 for follower in self.graph.predecessors(receiver):
                     agenda.append((t + 1, receiver, follower, vec_to_send))
