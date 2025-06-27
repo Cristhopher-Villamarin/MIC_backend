@@ -2,7 +2,6 @@
 import nltk
 nltk.download("punkt", quiet=True)
 
-
 from fastapi import FastAPI, Form, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
@@ -47,7 +46,8 @@ async def propagate(
     xlsx_file: UploadFile = File(None, description="Excel con estados"),
     nodes_csv_file: UploadFile = File(None, description="CSV con nodos"),
     links_csv_file: UploadFile = File(None, description="CSV con relaciones"),
-    max_steps: int = Form(4, ge=1, le=10)
+    max_steps: int = Form(4, ge=1, le=10),
+    method: str = Form("ema", description="Método de actualización: 'ema' o 'sma'")
 ):
     """
     Sube los archivos, construye la red y simula la cascada.
@@ -57,14 +57,16 @@ async def propagate(
     try:
         if csv_file and xlsx_file and not (nodes_csv_file or links_csv_file):
             # Modo original (con emociones)
+            if method not in ["ema", "sma"]:
+                raise HTTPException(400, "El método debe ser 'ema' o 'sma'")
             edges_df = pd.read_csv(csv_file.file)
             states_df = pd.read_excel(xlsx_file.file)
             engine.build(edges_df, states_df)  # Red lista
-            vector, log = engine.propagate(seed_user, message, max_steps)
+            vector, log = engine.propagate(seed_user, message, max_steps, method=method)
             return {
                 "vector": vector,
                 "log": log,
-                "message": "Propagación ejecutada correctamente",
+                "message": f"Propagación ejecutada correctamente con método {method}",
             }
         elif nodes_csv_file and links_csv_file and not (csv_file or xlsx_file):
             # Modo RIP-DSN (sin emociones)

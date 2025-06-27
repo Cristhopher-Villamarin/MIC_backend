@@ -130,8 +130,25 @@ def _decision(profile: str, sim_in: float, sim_out: float) -> str:
         )
     raise ValueError(f"Perfil desconocido: {profile!r}")
 
-def _ema(prev_vec: np.ndarray, new_vec: np.ndarray, alpha: float) -> np.ndarray:
-    return alpha * new_vec + (1.0 - alpha) * prev_vec
+def _update_vector(prev_vec: np.ndarray, new_vec: np.ndarray, alpha: float, method: str) -> np.ndarray:
+    """
+    Actualiza un vector usando media móvil exponencial (EMA) o simple (SMA).
+    
+    Args:
+        prev_vec: Vector previo (estado anterior).
+        new_vec: Vector nuevo (estado actual).
+        alpha: Factor de suavizado para EMA.
+        method: Método de actualización ('ema' o 'sma').
+    
+    Returns:
+        Vector actualizado.
+    """
+    if method == "ema":
+        return alpha * new_vec + (1.0 - alpha) * prev_vec
+    elif method == "sma":
+        return (prev_vec + new_vec) / 2.0
+    else:
+        raise ValueError(f"Método no reconocido: {method}. Use 'ema' o 'sma'.")
 
 # ─────────────────────── MOTOR DE PROPAGACIÓN ORIGINAL ─────────────
 class PropagationEngine:
@@ -181,7 +198,7 @@ class PropagationEngine:
             self.history[user] = [(self.state_in[user].copy(), self.state_out[user].copy())]
 
     def propagate(
-        self, seed_user: str, message: str, max_steps: int = 4
+        self, seed_user: str, message: str, max_steps: int = 4, method: str = "ema"
     ) -> Tuple[Dict[str, float], List[Dict[str, Any]]]:
         if self.graph is None:
             raise RuntimeError("Primero llama a build()")
@@ -192,7 +209,7 @@ class PropagationEngine:
         # Actualizar state_out del publicador inicial
         alpha = self.alpha_u[seed_user]
         prev_out = self.state_out[seed_user].copy()
-        self.state_out[seed_user] = _ema(prev_out, vec_msg, alpha)
+        self.state_out[seed_user] = _update_vector(prev_out, vec_msg, alpha, method)
         self.history[seed_user].append((self.state_in[seed_user].copy(), self.state_out[seed_user].copy()))
 
         # agenda: (t, sender, receiver, vector_enviado)
@@ -227,14 +244,14 @@ class PropagationEngine:
             action = _decision(self.profile_u[receiver], sim_in, sim_out)
 
             alpha = self.alpha_u[receiver]
-            new_in = _ema(prev_in, v, alpha)
+            new_in = _update_vector(prev_in, v, alpha, method)
             self.state_in[receiver] = new_in
 
             # Actualizar state_out si la acción es reenviar o modificar
             vec_to_send = v
             if action in {"reenviar", "modificar"}:
-                vec_to_send = v if action == "reenviar" else _ema(v, prev_out, alpha)
-                self.state_out[receiver] = _ema(prev_out, vec_to_send, alpha)
+                vec_to_send = v if action == "reenviar" else _update_vector(v, prev_out, alpha, method)
+                self.state_out[receiver] = _update_vector(prev_out, vec_to_send, alpha, method)
 
             # Actualizar historial
             self.history[receiver].append((self.state_in[receiver].copy(), self.state_out[receiver].copy()))
@@ -256,14 +273,12 @@ class PropagationEngine:
                 }
             )
 
-            # Difundir a los seguidoress
+            # Difundir a los seguidores
             if action in {"reenviar", "modificar"} and t < max_steps:
                 for follower in self.graph.predecessors(receiver):
                     agenda.append((t + 1, receiver, follower, vec_to_send))
 
         return vector_dict, LOG
-
-
 
 # ─────────────────────── MOTOR DE PROPAGACIÓN SIMPLE (RIP-DSN) ────
 class SimplePropagationEngine:
@@ -339,4 +354,3 @@ class SimplePropagationEngine:
                         agenda.append((t + 1, receiver, follower))
 
         return LOG
-
