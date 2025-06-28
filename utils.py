@@ -94,38 +94,48 @@ EMOTION_COLS: List[str] = [
 def _col(prefix: str) -> List[str]:
     return [f"{prefix}_{c}" for c in EMOTION_COLS]
 
-ALPHA_BY_PROFILE: Dict[str, float] = {
-    "High-Credibility Informant": 0.30,
-    "Emotionally-Driven Amplifier": 0.80,
-    "Mobilisation-Oriented Catalyst": 0.70,
-    "Emotionally Exposed Participant": 0.60,
+DEFAULT_ALPHA_BY_PROFILE: Dict[str, float] = {
+    "High-Credibility Informant": 0.3,
+    "Emotionally-Driven Amplifier": 0.8,
+    "Mobilisation-Oriented Catalyst": 0.7,
+    "Emotionally Exposed Participant": 0.6,
 }
 
-def _decision(profile: str, sim_in: float, sim_out: float) -> str:
+DEFAULT_THRESHOLDS: Dict[str, Dict[str, float]] = {
+    "High-Credibility Informant": {"forward": 0.8, "modify": 0.2, "ignore": 0.05},
+    "Emotionally-Driven Amplifier": {"forward": 0.95, "modify": 0.6, "ignore": 0.1},
+    "Mobilisation-Oriented Catalyst": {"forward": 0.6, "modify": 0.7, "ignore": 0.3},
+    "Emotionally Exposed Participant": {"forward": 0.3, "modify": 0.4, "ignore": 0.7},
+}
+
+def _decision(profile: str, sim_in: float, sim_out: float, thresholds: Dict[str, float]) -> str:
+    forward_threshold = thresholds.get("forward", DEFAULT_THRESHOLDS[profile]["forward"])
+    modify_threshold = thresholds.get("modify", DEFAULT_THRESHOLDS[profile]["modify"])
+    
     if profile == "High-Credibility Informant":
         return (
             "reenviar"
-            if (sim_in > 0.8 and sim_out > 0.7)
+            if (sim_in > forward_threshold and sim_out > 0.7)
             else "modificar"
-            if sim_in > 0.6
+            if sim_in > modify_threshold
             else "ignorar"
         )
     if profile == "Emotionally-Driven Amplifier":
-        return "reenviar" if sim_in > 0.4 else "modificar"
+        return "reenviar" if sim_in > forward_threshold else "modificar" if sim_in > modify_threshold else "ignorar"
     if profile == "Mobilisation-Oriented Catalyst":
         return (
             "reenviar"
-            if sim_in > 0.7
+            if sim_in > forward_threshold
             else "modificar"
-            if sim_in > 0.5
+            if sim_in > modify_threshold
             else "ignorar"
         )
     if profile == "Emotionally Exposed Participant":
         return (
             "reenviar"
-            if sim_in > 0.9
+            if sim_in > forward_threshold
             else "modificar"
-            if sim_in > 0.6
+            if sim_in > modify_threshold
             else "ignorar"
         )
     raise ValueError(f"Perfil desconocido: {profile!r}")
@@ -160,12 +170,14 @@ class PropagationEngine:
         self.alpha_u: Dict[str, float] = {}
         self.profile_u: Dict[str, str] = {}
         self.history: Dict[str, List[np.ndarray]] = {}  # Historial para state_in y state_out
+        self.thresholds_u: Dict[str, Dict[str, float]] = {}
 
     def build(
         self,
         edges_df: pd.DataFrame,
         states_df: pd.DataFrame,
         network_id: int | None = None,
+        thresholds: Dict[str, Dict[str, float]] = {}
     ) -> None:
         if network_id is not None and "network_id" in edges_df.columns:
             edges_df = edges_df.query("network_id == @network_id")
@@ -180,6 +192,7 @@ class PropagationEngine:
         self.alpha_u.clear()
         self.profile_u.clear()
         self.history.clear()
+        self.thresholds_u.clear()
 
         for user, row in states_df.iterrows():
             perfil = (
@@ -193,8 +206,9 @@ class PropagationEngine:
             )
             self.state_in[user] = row[_col("in")].to_numpy(dtype=float)
             self.state_out[user] = row[_col("out")].to_numpy(dtype=float)
-            self.alpha_u[user] = ALPHA_BY_PROFILE[perfil]
+            self.alpha_u[user] = thresholds.get(perfil, {}).get("alpha", DEFAULT_ALPHA_BY_PROFILE[perfil])
             self.profile_u[user] = perfil
+            self.thresholds_u[user] = thresholds.get(perfil, DEFAULT_THRESHOLDS[perfil])
             self.history[user] = [(self.state_in[user].copy(), self.state_out[user].copy())]
 
     def propagate(
@@ -241,7 +255,7 @@ class PropagationEngine:
             prev_out = self.state_out[receiver].copy()
             sim_in = cosine_similarity([v], [prev_in])[0, 0]
             sim_out = cosine_similarity([v], [self.state_out[receiver]])[0, 0]
-            action = _decision(self.profile_u[receiver], sim_in, sim_out)
+            action = _decision(self.profile_u[receiver], sim_in, sim_out, self.thresholds_u[receiver])
 
             alpha = self.alpha_u[receiver]
             new_in = _update_vector(prev_in, v, alpha, method)
