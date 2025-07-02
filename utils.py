@@ -212,12 +212,13 @@ class PropagationEngine:
             self.history[user] = [(self.state_in[user].copy(), self.state_out[user].copy())]
 
     def propagate(
-        self, seed_user: str, message: str, max_steps: int = 4, method: str = "ema"
+        self, seed_user: str, message: str, max_steps: int = 4, method: str = "ema", custom_vector: np.ndarray | None = None
     ) -> Tuple[Dict[str, float], List[Dict[str, Any]]]:
         if self.graph is None:
             raise RuntimeError("Primero llama a build()")
 
-        vec_msg = self.analyzer.vector(message)
+        # Use custom_vector if provided, otherwise analyze the message
+        vec_msg = custom_vector if custom_vector is not None else self.analyzer.vector(message)
         vector_dict = {k: round(v, 3) for k, v in zip(EMOTION_COLS, vec_msg)}
 
         # Actualizar state_out del publicador inicial
