@@ -52,10 +52,12 @@ async def analyze_message(
         if custom_vector:
             try:
                 vector = json.loads(custom_vector)
-                if not isinstance(vector, dict) or len(vector) != 10:
-                    raise ValueError("El vector personalizado debe ser un diccionario con 10 emociones")
+                if not isinstance(vector, dict):
+                    raise ValueError("El vector personalizado debe ser un diccionario")
+                # Complete missing keys with 0
+                complete_vector = {key: vector.get(key, 0.0) for key in analyzer.labels}
                 return {
-                    "vector": vector,
+                    "vector": complete_vector,
                     "message": "Vector personalizado recibido correctamente",
                 }
             except json.JSONDecodeError:
@@ -100,10 +102,12 @@ async def propagate(
             if custom_vector:
                 try:
                     vector_dict = json.loads(custom_vector)
-                    if not isinstance(vector_dict, dict) or len(vector_dict) != 10:
-                        raise ValueError("El vector personalizado debe ser un diccionario con 10 emociones")
+                    if not isinstance(vector_dict, dict):
+                        raise ValueError("El vector personalizado debe ser un diccionario")
+                    # Complete missing keys with 0
+                    complete_vector = {key: vector_dict.get(key, 0.0) for key in analyzer.labels}
                     # Convert dictionary to NumPy array for PropagationEngine
-                    vector = np.array(list(vector_dict.values()), dtype=float)
+                    vector = np.array(list(complete_vector.values()), dtype=float)
                 except json.JSONDecodeError:
                     raise HTTPException(400, "El custom_vector debe ser un JSON válido")
                 except ValueError as ve:
