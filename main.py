@@ -96,11 +96,6 @@ async def propagate(
     thresholds: str = Form("{}", description="JSON con umbrales y alphas por perfil"),
     custom_vector: str = Form(None, description="JSON con vector emocional personalizado")
 ):
-    """
-    Sube los archivos, construye la red y simula la cascada.
-    - Si se proporcionan csv_file y xlsx_file, usa PropagationEngine (con emociones).
-    - Si se proporcionan nodes_csv_file y links_csv_file, usa SimplePropagationEngine (sin emociones).
-    """
     try:
         thresholds_dict = json.loads(thresholds) if thresholds else {}
         if csv_file and xlsx_file and not (nodes_csv_file or links_csv_file):
@@ -109,6 +104,9 @@ async def propagate(
             edges_df = pd.read_csv(csv_file.file)
             states_df = pd.read_excel(xlsx_file.file)
             engine.build(edges_df, states_df, thresholds=thresholds_dict)
+            # Verificar si seed_user está en el grafo
+            if seed_user not in engine.graph.nodes:
+                raise HTTPException(400, detail=f"El usuario inicial '{seed_user}' no se encuentra en la red")
             if custom_vector:
                 try:
                     vector_dict = json.loads(custom_vector)
@@ -132,6 +130,8 @@ async def propagate(
             nodes_df = pd.read_csv(nodes_csv_file.file)
             links_df = pd.read_csv(links_csv_file.file)
             simple_engine.build(links_df, nodes_df)
+            if seed_user not in simple_engine.nodes:
+                raise HTTPException(400, detail=f"El usuario inicial '{seed_user}' no se encuentra en la red")
             log = simple_engine.propagate(seed_user, message, max_steps)
             return {
                 "vector": {},
@@ -142,7 +142,8 @@ async def propagate(
             raise HTTPException(400, detail="Debe proporcionar csv_file+xlsx_file o nodes_csv_file+links_csv_file, pero no ambos.")
     except Exception as e:
         raise HTTPException(500, detail=f"Error al procesar la propagación: {str(e)}")
-
+    
+    
 @app.post("/generate-vectors")
 async def generate_vectors(num_vectors: int = Form(..., description="Número de vectores a generar", ge=1, le=1000)):
     """
