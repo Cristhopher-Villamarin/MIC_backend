@@ -169,7 +169,7 @@ class PropagationEngine:
         self.state_out: Dict[str, np.ndarray] = {}
         self.alpha_u: Dict[str, float] = {}
         self.profile_u: Dict[str, str] = {}
-        self.history: Dict[str, List[np.ndarray]] = {}
+        self.history: Dict[str, List[np.ndarray]] = {}  # Historial para state_in y state_out
         self.thresholds_u: Dict[str, Dict[str, float]] = {}
 
     def build(
@@ -184,20 +184,13 @@ class PropagationEngine:
 
         # Filtrar aristas donde source == target
         edges_df = edges_df[edges_df['source'] != edges_df['target']]
-        
+
         print("edges_df:", edges_df.head().to_dict())
         print("states_df:", states_df.head().to_dict())
-        print(f"Filtradas {len(edges_df[edges_df['source'] == edges_df['target']])} aristas con source == target")
 
         self.graph = nx.from_pandas_edgelist(
             edges_df, source="source", target="target", create_using=nx.DiGraph
         )
-        print("Nodos en el grafo:", list(self.graph.nodes))
-        self_loops = list(nx.selfloop_edges(self.graph))
-        if self_loops:
-            print(f"Advertencia: Se detectaron {len(self_loops)} bucles en el grafo: {self_loops}")
-        else:
-            print("No se detectaron bucles en el grafo.")
 
         states_df = states_df.set_index("user_name")
         self.state_in.clear()
@@ -208,7 +201,6 @@ class PropagationEngine:
         self.thresholds_u.clear()
 
         for user, row in states_df.iterrows():
-            print(f"Procesando usuario: {user}")
             perfil = (
                 "High-Credibility Informant"
                 if row["cluster"] == 0
@@ -231,23 +223,26 @@ class PropagationEngine:
         if self.graph is None:
             raise RuntimeError("Primero llama a build()")
 
+        # Use custom_vector if provided, otherwise analyze the message
         vec_msg = custom_vector if custom_vector is not None else self.analyzer.vector(message)
         vector_dict = {k: round(v, 3) for k, v in zip(EMOTION_COLS, vec_msg)}
 
+        # Actualizar state_out del publicador inicial
         alpha = self.alpha_u[seed_user]
         prev_out = self.state_out[seed_user].copy()
         self.state_out[seed_user] = _update_vector(prev_out, vec_msg, alpha, method)
         self.history[seed_user].append((self.state_in[seed_user].copy(), self.state_out[seed_user].copy()))
 
+        # agenda: (t, sender, receiver, vector_enviado)
         agenda = deque([(0, None, seed_user, vec_msg)])
         LOG: List[Dict[str, Any]] = []
-        processed_interactions = set()  # Rastrea interacciones únicas (sender, receiver)
 
         while agenda:
             t, sender, receiver, v = agenda.popleft()
-            print(f"Procesando interacción: sender={sender}, receiver={receiver}, t={t}")
 
+            # ─── Publicación inicial ───────────────────────────────
             if sender is None:
+                # Registrar publicación inicial en el log
                 LOG.append(
                     {
                         "t": t,
@@ -262,22 +257,7 @@ class PropagationEngine:
                     agenda.append((t, receiver, follower, v))
                 continue
 
-            # Evitar procesar la misma interacción repetidamente
-            interaction_key = (sender, receiver)
-            if interaction_key in processed_interactions:
-                LOG.append(
-                    {
-                        "t": t,
-                        "sender": sender,
-                        "receiver": receiver,
-                        "action": "ignored (repeated interaction)",
-                        "vector_sent": np.round(v, 3).tolist(),
-                        "note": f"Interaction {sender} -> {receiver} already processed",
-                    }
-                )
-                continue
-            processed_interactions.add(interaction_key)
-
+            # ─── Resto de interacciones ────────────────────────────
             prev_in = self.state_in[receiver].copy()
             prev_out = self.state_out[receiver].copy()
             sim_in = cosine_similarity([v], [prev_in])[0, 0]
@@ -288,13 +268,16 @@ class PropagationEngine:
             new_in = _update_vector(prev_in, v, alpha, method)
             self.state_in[receiver] = new_in
 
+            # Actualizar state_out si la acción es reenviar o modificar
             vec_to_send = v
             if action in {"reenviar", "modificar"}:
                 vec_to_send = v if action == "reenviar" else _update_vector(v, prev_out, alpha, method)
                 self.state_out[receiver] = _update_vector(prev_out, vec_to_send, alpha, method)
 
+            # Actualizar historial
             self.history[receiver].append((self.state_in[receiver].copy(), self.state_out[receiver].copy()))
 
+            # Registrar en el log
             LOG.append(
                 {
                     "t": t,
@@ -311,6 +294,7 @@ class PropagationEngine:
                 }
             )
 
+            # Difundir a los seguidores
             if action in {"reenviar", "modificar"} and t < max_steps:
                 for follower in self.graph.predecessors(receiver):
                     agenda.append((t + 1, receiver, follower, vec_to_send))
@@ -334,20 +318,9 @@ class SimplePropagationEngine:
         if network_id is not None and "network_id" in nodes_df.columns:
             nodes_df = nodes_df.query("network_id == @network_id")
 
-        # Filtrar aristas donde source == target
-        links_df = links_df[links_df['source'] != links_df['target']]
-        
-        print(f"Filtradas {len(links_df[links_df['source'] == links_df['target']])} aristas con source == target")
-
         self.graph = nx.from_pandas_edgelist(
             links_df, source="source", target="target", create_using=nx.DiGraph
         )
-        self_loops = list(nx.selfloop_edges(self.graph))
-        if self_loops:
-            print(f"Advertencia: Se detectaron {len(self_loops)} bucles en el grafo: {self_loops}")
-        else:
-            print("No se detectaron bucles en el grafo.")
-        
         self.nodes = set(nodes_df["node"].astype(str))
 
     def propagate(
@@ -358,29 +331,17 @@ class SimplePropagationEngine:
         if seed_user not in self.nodes:
             raise ValueError(f"Usuario inicial {seed_user} no encontrado en la red")
 
+        # agenda: (t, sender, receiver)
         agenda = deque([(0, None, seed_user)])
         LOG: List[Dict[str, Any]] = []
+
+        # Usar un diccionario para rastrear el número de veces que un nodo recibe el mensaje
         received_count = {node: 0 for node in self.nodes}
-        processed_interactions = set()
 
         while agenda:
             t, sender, receiver = agenda.popleft()
-            print(f"Procesando interacción: sender={sender}, receiver={receiver}, t={t}")
 
-            interaction_key = (sender, receiver)
-            if interaction_key in processed_interactions:
-                LOG.append(
-                    {
-                        "t": t,
-                        "sender": sender,
-                        "receiver": receiver,
-                        "action": "forward (repeated)",
-                        "note": f"Interaction {sender} -> {receiver} already processed",
-                    }
-                )
-                continue
-            processed_interactions.add(interaction_key)
-
+            # Incrementar el conteo de recepción
             received_count[receiver] += 1
             if received_count[receiver] > 1:
                 LOG.append(
@@ -392,8 +353,9 @@ class SimplePropagationEngine:
                         "note": f"Received {received_count[receiver]} times",
                     }
                 )
-                continue
+                continue  # Evitar propagación repetida
 
+            # Registrar en el log
             LOG.append(
                 {
                     "t": t,
@@ -403,9 +365,13 @@ class SimplePropagationEngine:
                 }
             )
 
+            # Difundir solo a los predecesores (seguidores)
             if t < max_steps:
                 for follower in self.graph.predecessors(receiver):
-                    if follower in self.nodes and (receiver, follower) not in processed_interactions:
+                    if follower in self.nodes and not any(
+                        l["sender"] == receiver and l["receiver"] == follower and l["action"] == "forward"
+                        for l in LOG
+                    ):
                         agenda.append((t + 1, receiver, follower))
 
         return LOG
