@@ -9,6 +9,9 @@ import numpy as np
 import tensorflow as tf
 from generate_vectors import generar_datos_sinteticos_cargado, cargar_modelo_y_escalador
 from utils import EmotionAnalyzer, PropagationEngine, SimplePropagationEngine
+from pymongo import MongoClient
+from datetime import datetime
+import uuid
 
 app = FastAPI(
     title="Backend · Propagación Emocional",
@@ -27,6 +30,16 @@ app.add_middleware(
 analyzer = EmotionAnalyzer()               # ⇠ /analyze
 engine = PropagationEngine()              # ⇠ /propagate (original)
 simple_engine = SimplePropagationEngine()  # ⇠ /propagate (RIP-DSN)
+
+# MongoDB Configuration
+MONGO_URI = "mongodb://localhost:27017"  # Replace with your MongoDB URI
+DB_NAME = "emotional_propagation"
+COLLECTION_NAME = "propagation_logs"
+
+# Initialize MongoDB client
+mongo_client = MongoClient(MONGO_URI)
+db = mongo_client[DB_NAME]
+collection = db[COLLECTION_NAME]
 
 # Cargar modelo VAE, escalador y metadatos al iniciar el servidor
 try:
@@ -121,9 +134,30 @@ async def propagate(
             else:
                 vector = analyzer.vector(message)
             vector_dict, log = engine.propagate(seed_user, message, max_steps, method=method, custom_vector=vector)
+            
+            # Save propagation log to MongoDB
+            propagation_id = str(uuid.uuid4())
+            propagation_document = {
+                "propagation_id": propagation_id,
+                "seed_user": seed_user,
+                "message": message,
+                "method": method,
+                "max_steps": max_steps,
+                "thresholds": thresholds_dict,
+                "timestamp": datetime.utcnow(),
+                "log": log
+            }
+            try:
+                collection.insert_one(propagation_document)
+                print(f"Propagation log saved to MongoDB with ID: {propagation_id}")
+            except Exception as mongo_error:
+                print(f"Error saving to MongoDB: {str(mongo_error)}")
+                raise HTTPException(500, detail=f"Error saving propagation log to MongoDB: {str(mongo_error)}")
+            
             return {
                 "vector": vector_dict,
                 "log": log,
+                "propagation_id": propagation_id,
                 "message": f"Propagación ejecutada correctamente con método {method}",
             }
         elif nodes_csv_file and links_csv_file and not (csv_file or xlsx_file):
@@ -133,17 +167,36 @@ async def propagate(
             if seed_user not in simple_engine.nodes:
                 raise HTTPException(400, detail=f"El usuario inicial '{seed_user}' no se encuentra en la red")
             log = simple_engine.propagate(seed_user, message, max_steps)
+            
+            # Save RIP-DSN propagation log to MongoDB
+            propagation_id = str(uuid.uuid4())
+            propagation_document = {
+                "propagation_id": propagation_id,
+                "seed_user": seed_user,
+                "message": message,
+                "method": "rip-dsn",
+                "max_steps": max_steps,
+                "timestamp": datetime.utcnow(),
+                "log": log
+            }
+            try:
+                collection.insert_one(propagation_document)
+                print(f"RIP-DSN propagation log saved to MongoDB with ID: {propagation_id}")
+            except Exception as mongo_error:
+                print(f"Error saving to MongoDB: {str(mongo_error)}")
+                raise HTTPException(500, detail=f"Error saving propagation log to MongoDB: {str(mongo_error)}")
+            
             return {
                 "vector": {},
                 "log": log,
+                "propagation_id": propagation_id,
                 "message": "Propagación RIP-DSN ejecutada correctamente",
             }
         else:
             raise HTTPException(400, detail="Debe proporcionar csv_file+xlsx_file o nodes_csv_file+links_csv_file, pero no ambos.")
     except Exception as e:
         raise HTTPException(500, detail=f"Error al procesar la propagación: {str(e)}")
-    
-    
+
 @app.post("/generate-vectors")
 async def generate_vectors(num_vectors: int = Form(..., description="Número de vectores a generar", ge=1, le=1000)):
     """
