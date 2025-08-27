@@ -115,27 +115,33 @@ def _decision(profile: str, sim_in: float, sim_out: float, thresholds: Dict[str,
     if profile == "High-Credibility Informant":
         return (
             "reenviar"
-            if (sim_in > forward_threshold and sim_out > 0.7)
+            if (sim_in > forward_threshold and sim_out > forward_threshold)
             else "modificar"
-            if sim_in > modify_threshold
+            if (sim_in > modify_threshold and sim_out > modify_threshold)
             else "ignorar"
         )
     if profile == "Emotionally-Driven Amplifier":
-        return "reenviar" if sim_in > forward_threshold else "modificar" if sim_in > modify_threshold else "ignorar"
+        return (
+            "reenviar"
+            if (sim_in > forward_threshold and sim_out > forward_threshold)
+            else "modificar"
+            if (sim_in > modify_threshold and sim_out > modify_threshold)
+            else "ignorar"
+        )
     if profile == "Mobilisation-Oriented Catalyst":
         return (
             "reenviar"
-            if sim_in > forward_threshold
+            if (sim_in > forward_threshold and sim_out > forward_threshold)
             else "modificar"
-            if sim_in > modify_threshold
+            if (sim_in > modify_threshold and sim_out > modify_threshold)
             else "ignorar"
         )
     if profile == "Emotionally Exposed Participant":
-        return (
+      return (
             "reenviar"
-            if sim_in > forward_threshold
+            if (sim_in > forward_threshold and sim_out > forward_threshold)
             else "modificar"
-            if sim_in > modify_threshold
+            if (sim_in > modify_threshold and sim_out > modify_threshold)
             else "ignorar"
         )
     raise ValueError(f"Perfil desconocido: {profile!r}")
