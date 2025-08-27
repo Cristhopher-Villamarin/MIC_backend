@@ -182,6 +182,12 @@ class PropagationEngine:
         if network_id is not None and "network_id" in edges_df.columns:
             edges_df = edges_df.query("network_id == @network_id")
 
+        # Filtrar aristas donde source == target
+        edges_df = edges_df[edges_df['source'] != edges_df['target']]
+
+        print("edges_df:", edges_df.head().to_dict())
+        print("states_df:", states_df.head().to_dict())
+
         self.graph = nx.from_pandas_edgelist(
             edges_df, source="source", target="target", create_using=nx.DiGraph
         )

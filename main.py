@@ -1,4 +1,3 @@
-# main.py
 import nltk
 nltk.download("punkt", quiet=True)
 
@@ -7,24 +6,51 @@ from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import json
 import numpy as np
-
+import tensorflow as tf
+from generate_vectors import generar_datos_sinteticos_cargado, cargar_modelo_y_escalador
 from utils import EmotionAnalyzer, PropagationEngine, SimplePropagationEngine
+from pymongo import MongoClient
+from datetime import datetime
+import uuid
 
 app = FastAPI(
     title="Backend · Propagación Emocional",
-    description="Endpoints de prueba para propagar mensajes en una red",
+    description="Endpoints de prueba para propagar mensajes en una red y generar vectores sintéticos",
     version="2.0.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], allow_credentials=True,
-    allow_methods=["*"], allow_headers=["*"],
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 analyzer = EmotionAnalyzer()               # ⇠ /analyze
 engine = PropagationEngine()              # ⇠ /propagate (original)
 simple_engine = SimplePropagationEngine()  # ⇠ /propagate (RIP-DSN)
+
+# MongoDB Configuration
+MONGO_URI = "mongodb://localhost:27017"  # Replace with your MongoDB URI
+DB_NAME = "emotional_propagation"
+COLLECTION_NAME = "propagation_logs"
+
+# Initialize MongoDB client
+mongo_client = MongoClient(MONGO_URI)
+db = mongo_client[DB_NAME]
+collection = db[COLLECTION_NAME]
+
+# Cargar modelo VAE, escalador y metadatos al iniciar el servidor
+try:
+    vae_model, scaler, feature_columns, cluster_column = cargar_modelo_y_escalador(
+        model_path='vae_model.keras',
+        scaler_path='scaler.pkl',
+        metadata_path='model_metadata.json'
+    )
+except Exception as e:
+    print(f"Error al cargar el modelo, escalador o metadatos: {e}")
+    raise Exception("No se pudo inicializar el modelo VAE, escalador o metadatos")
 
 # ───────────────────────── ENDPOINTS ───────────────────────────────────
 @app.post("/analyze")
@@ -38,7 +64,7 @@ async def analyze(text: str = Form(...)):
             "message": "Texto analizado correctamente",
         }
     except Exception as e:
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, detail=f"Error al analizar el texto: {str(e)}")
 
 @app.post("/analyze-message")
 async def analyze_message(
@@ -54,22 +80,21 @@ async def analyze_message(
                 vector = json.loads(custom_vector)
                 if not isinstance(vector, dict):
                     raise ValueError("El vector personalizado debe ser un diccionario")
-                # Complete missing keys with 0
                 complete_vector = {key: vector.get(key, 0.0) for key in analyzer.labels}
                 return {
                     "vector": complete_vector,
                     "message": "Vector personalizado recibido correctamente",
                 }
             except json.JSONDecodeError:
-                raise HTTPException(400, "El custom_vector debe ser un JSON válido")
+                raise HTTPException(400, detail="El custom_vector debe ser un JSON válido")
             except ValueError as ve:
-                raise HTTPException(400, str(ve))
+                raise HTTPException(400, detail=str(ve))
         return {
             "vector": analyzer.as_dict(message),
             "message": "Mensaje analizado correctamente",
         }
     except Exception as e:
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, detail=f"Error al analizar el mensaje: {str(e)}")
 
 @app.post("/propagate")
 async def propagate(
@@ -84,61 +109,116 @@ async def propagate(
     thresholds: str = Form("{}", description="JSON con umbrales y alphas por perfil"),
     custom_vector: str = Form(None, description="JSON con vector emocional personalizado")
 ):
-    """
-    Sube los archivos, construye la red y simula la cascada.
-    - Si se proporcionan csv_file y xlsx_file, usa PropagationEngine (con emociones).
-    - Si se proporcionan nodes_csv_file y links_csv_file, usa SimplePropagationEngine (sin emociones).
-    """
     try:
         thresholds_dict = json.loads(thresholds) if thresholds else {}
         if csv_file and xlsx_file and not (nodes_csv_file or links_csv_file):
-            # Modo original (con emociones)
             if method not in ["ema", "sma"]:
-                raise HTTPException(400, "El método debe ser 'ema' o 'sma'")
+                raise HTTPException(400, detail="El método debe ser 'ema' o 'sma'")
             edges_df = pd.read_csv(csv_file.file)
             states_df = pd.read_excel(xlsx_file.file)
-            engine.build(edges_df, states_df, thresholds=thresholds_dict)  # Red lista
-            # Use custom vector if provided, otherwise analyze the message
+            engine.build(edges_df, states_df, thresholds=thresholds_dict)
+            # Verificar si seed_user está en el grafo
+            if seed_user not in engine.graph.nodes:
+                raise HTTPException(400, detail=f"El usuario inicial '{seed_user}' no se encuentra en la red")
             if custom_vector:
                 try:
                     vector_dict = json.loads(custom_vector)
                     if not isinstance(vector_dict, dict):
                         raise ValueError("El vector personalizado debe ser un diccionario")
-                    # Complete missing keys with 0
                     complete_vector = {key: vector_dict.get(key, 0.0) for key in analyzer.labels}
-                    # Convert dictionary to NumPy array for PropagationEngine
                     vector = np.array(list(complete_vector.values()), dtype=float)
                 except json.JSONDecodeError:
-                    raise HTTPException(400, "El custom_vector debe ser un JSON válido")
+                    raise HTTPException(400, detail="El custom_vector debe ser un JSON válido")
                 except ValueError as ve:
-                    raise HTTPException(400, str(ve))
+                    raise HTTPException(400, detail=str(ve))
             else:
                 vector = analyzer.vector(message)
-            # Call propagate with custom_vector as NumPy array
             vector_dict, log = engine.propagate(seed_user, message, max_steps, method=method, custom_vector=vector)
+            
+            # Save propagation log to MongoDB
+            propagation_id = str(uuid.uuid4())
+            propagation_document = {
+                "propagation_id": propagation_id,
+                "seed_user": seed_user,
+                "message": message,
+                "method": method,
+                "max_steps": max_steps,
+                "thresholds": thresholds_dict,
+                "timestamp": datetime.utcnow(),
+                "log": log
+            }
+            try:
+                collection.insert_one(propagation_document)
+                print(f"Propagation log saved to MongoDB with ID: {propagation_id}")
+            except Exception as mongo_error:
+                print(f"Error saving to MongoDB: {str(mongo_error)}")
+                raise HTTPException(500, detail=f"Error saving propagation log to MongoDB: {str(mongo_error)}")
+            
             return {
-                "vector": vector_dict,  # Already a dictionary from PropagationEngine
+                "vector": vector_dict,
                 "log": log,
+                "propagation_id": propagation_id,
                 "message": f"Propagación ejecutada correctamente con método {method}",
             }
         elif nodes_csv_file and links_csv_file and not (csv_file or xlsx_file):
-            # Modo RIP-DSN (sin emociones)
             nodes_df = pd.read_csv(nodes_csv_file.file)
             links_df = pd.read_csv(links_csv_file.file)
-            simple_engine.build(links_df, nodes_df)  # Red lista
+            simple_engine.build(links_df, nodes_df)
+            if seed_user not in simple_engine.nodes:
+                raise HTTPException(400, detail=f"El usuario inicial '{seed_user}' no se encuentra en la red")
             log = simple_engine.propagate(seed_user, message, max_steps)
+            
+            # Save RIP-DSN propagation log to MongoDB
+            propagation_id = str(uuid.uuid4())
+            propagation_document = {
+                "propagation_id": propagation_id,
+                "seed_user": seed_user,
+                "message": message,
+                "method": "rip-dsn",
+                "max_steps": max_steps,
+                "timestamp": datetime.utcnow(),
+                "log": log
+            }
+            try:
+                collection.insert_one(propagation_document)
+                print(f"RIP-DSN propagation log saved to MongoDB with ID: {propagation_id}")
+            except Exception as mongo_error:
+                print(f"Error saving to MongoDB: {str(mongo_error)}")
+                raise HTTPException(500, detail=f"Error saving propagation log to MongoDB: {str(mongo_error)}")
+            
             return {
-                "vector": {},  # Sin vector emocional
+                "vector": {},
                 "log": log,
+                "propagation_id": propagation_id,
                 "message": "Propagación RIP-DSN ejecutada correctamente",
             }
         else:
-            raise HTTPException(400, "Debe proporcionar csv_file+xlsx_file o nodes_csv_file+links_csv_file, pero no ambos.")
+            raise HTTPException(400, detail="Debe proporcionar csv_file+xlsx_file o nodes_csv_file+links_csv_file, pero no ambos.")
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=f"Error al procesar la propagación: {str(e)}")
+
+@app.post("/generate-vectors")
+async def generate_vectors(num_vectors: int = Form(..., description="Número de vectores a generar", ge=1, le=1000)):
+    """
+    Genera el número especificado de vectores sintéticos usando el modelo VAE cargado.
+    """
+    try:
+        df_sintetico = generar_datos_sinteticos_cargado(
+            vae_model, scaler, num_vectors, feature_columns, cluster_column
+        )
+        result = df_sintetico.to_dict(orient='records')
+        return {
+            "vectors": result,
+            "message": f"Se generaron {len(result)} vectores sintéticos correctamente"
+        }
+    except Exception as e:
+        raise HTTPException(500, detail=f"Error al generar vectores: {str(e)}")
 
 @app.get("/health")
 async def health():
+    """
+    Verifica el estado del servidor.
+    """
     return {"status": "ok"}
 
 if __name__ == "__main__":
