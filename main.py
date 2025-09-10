@@ -8,7 +8,7 @@ import json
 import numpy as np
 import tensorflow as tf
 from generate_vectors import generar_datos_sinteticos_cargado, cargar_modelo_y_escalador
-from utils import EmotionAnalyzer, PropagationEngine, SimplePropagationEngine, SIRPropagationEngine, SISPropagationEngine, RWSIRPropagationEngine
+from utils import EmotionAnalyzer, PropagationEngine, SimplePropagationEngine, SIRPropagationEngine, SISPropagationEngine, RWSIRPropagationEngine, RWSISPropagationEngine
 from pymongo import MongoClient
 from datetime import datetime
 import uuid
@@ -33,6 +33,7 @@ simple_engine = SimplePropagationEngine()  # ⇠ /propagate (RIP-DSN)
 sir_engine = SIRPropagationEngine()       # ⇠ /propagate-sir
 sis_engine = SISPropagationEngine()       # ⇠ /propagate-sis
 rw_sir_engine = RWSIRPropagationEngine()  # ⇠ /propagate-rw-sir
+rw_sis_engine = RWSISPropagationEngine()  # ⇠ /propagate-rw-sis
 
 # MongoDB Configuration
 MONGO_URI = "mongodb://localhost:27017"  # Replace with your MongoDB URI
@@ -461,6 +462,55 @@ async def propagate_rw_sir(
         }
     except Exception as e:
         raise HTTPException(500, detail=f"Error al procesar la propagación Real World SIR: {str(e)}")
+
+@app.post("/propagate-rw-sis")
+async def propagate_rw_sis(
+    seed_user: str = Form(..., description="Usuario inicial infectado"),
+    beta: float = Form(..., description="Tasa de infección", ge=0.0, le=1.0),
+    gamma: float = Form(..., description="Tasa de recuperación", ge=0.0, le=1.0),
+    nodes_csv_file: UploadFile = File(..., description="CSV con nodos"),
+    links_csv_file: UploadFile = File(..., description="CSV con relaciones"),
+    max_steps: int = Form(10, ge=1, le=50)
+):
+    """
+    Ejecuta propagación SIS (Susceptible-Infected-Susceptible) en red del mundo real.
+    """
+    try:
+        nodes_df = pd.read_csv(nodes_csv_file.file)
+        links_df = pd.read_csv(links_csv_file.file)
+        rw_sis_engine.build(links_df, nodes_df)
+        
+        if seed_user not in rw_sis_engine.nodes:
+            raise HTTPException(400, detail=f"El usuario inicial '{seed_user}' no se encuentra en la red")
+        
+        log = rw_sis_engine.propagate(seed_user, beta, gamma, max_steps)
+        
+        # Save Real World SIS propagation log to MongoDB
+        propagation_id = str(uuid.uuid4())
+        propagation_document = {
+            "propagation_id": propagation_id,
+            "seed_user": seed_user,
+            "method": "rw-sis",
+            "beta": beta,
+            "gamma": gamma,
+            "max_steps": max_steps,
+            "timestamp": datetime.utcnow(),
+            "log": log
+        }
+        try:
+            collection.insert_one(propagation_document)
+            print(f"Real World SIS propagation log saved to MongoDB with ID: {propagation_id}")
+        except Exception as mongo_error:
+            print(f"Error saving to MongoDB: {str(mongo_error)}")
+            raise HTTPException(500, detail=f"Error saving propagation log to MongoDB: {str(mongo_error)}")
+        
+        return {
+            "log": log,
+            "propagation_id": propagation_id,
+            "message": "Propagación Real World SIS ejecutada correctamente",
+        }
+    except Exception as e:
+        raise HTTPException(500, detail=f"Error al procesar la propagación Real World SIS: {str(e)}")
 
 @app.get("/health")
 async def health():

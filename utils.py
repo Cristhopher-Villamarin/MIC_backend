@@ -646,3 +646,91 @@ class RWSIRPropagationEngine:
             time_step += 1
 
         return propagation_log
+
+class RWSISPropagationEngine:
+    def __init__(self) -> None:
+        self.graph: nx.DiGraph | None = None
+        self.nodes: set = set()
+
+    def build(
+        self,
+        links_df: pd.DataFrame,
+        nodes_df: pd.DataFrame,
+        network_id: int | None = None,
+    ) -> None:
+        if network_id is not None and "network_id" in links_df.columns:
+            links_df = links_df.query("network_id == @network_id")
+        if network_id is not None and "network_id" in nodes_df.columns:
+            nodes_df = nodes_df.query("network_id == @network_id")
+
+        self.graph = nx.from_pandas_edgelist(
+            links_df, source="source", target="target", create_using=nx.DiGraph
+        )
+        self.nodes = set(nodes_df["node"].astype(str))
+
+    def propagate(
+        self, seed_user: str, beta: float, gamma: float, max_steps: int = 10
+    ) -> List[Dict[str, Any]]:
+        if self.graph is None:
+            raise RuntimeError("Primero llama a build()")
+        if seed_user not in self.nodes:
+            raise ValueError(f"Usuario inicial {seed_user} no encontrado en la red")
+
+        # Inicializar estados de nodos
+        node_states = {node: 'susceptible' for node in self.nodes}
+        node_states[seed_user] = 'infected'
+
+        # Variables de simulación
+        propagation_log = []
+        current_infected = [seed_user]
+        time_step = 0
+
+        # Simulación de propagación SIS en red del mundo real
+        while current_infected and time_step < max_steps:
+            new_infected = []
+
+            # Fase 1: Propagación de infección a vecinos susceptibles
+            for infected_id in current_infected:
+                # Obtener vecinos susceptibles (predecesores en el grafo dirigido)
+                susceptible_neighbors = [
+                    neighbor for neighbor in self.graph.predecessors(infected_id)
+                    if neighbor in self.nodes and node_states[neighbor] == 'susceptible'
+                ]
+
+                for neighbor in susceptible_neighbors:
+                    if np.random.random() < beta:
+                        # Infectar nodo susceptible
+                        node_states[neighbor] = 'infected'
+                        new_infected.append(neighbor)
+                        
+                        # Registrar evento de infección
+                        propagation_log.append({
+                            "t": time_step,
+                            "sender": infected_id,
+                            "receiver": neighbor,
+                            "action": "infect",
+                            "state": "infected"
+                        })
+
+            # Fase 2: Verificar recuperación de infectados (vuelven a susceptibles)
+            recovered_this_step = []
+            for infected_id in current_infected:
+                if np.random.random() < gamma:
+                    node_states[infected_id] = 'susceptible'
+                    recovered_this_step.append(infected_id)
+                    
+                    # Registrar evento de recuperación
+                    propagation_log.append({
+                        "t": time_step,
+                        "sender": infected_id,
+                        "receiver": infected_id,
+                        "action": "recover",
+                        "state": "susceptible"
+                    })
+
+            # Actualizar para el siguiente paso de tiempo
+            current_infected = [node for node in current_infected + new_infected 
+                              if node not in recovered_this_step]
+            time_step += 1
+
+        return propagation_log
