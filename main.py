@@ -223,6 +223,8 @@ async def propagate_ba_sir(
     seed_user: str = Form(..., description="Usuario inicial infectado"),
     beta: float = Form(..., description="Tasa de infección", ge=0.0, le=1.0),
     gamma: float = Form(..., description="Tasa de recuperación", ge=0.0, le=1.0),
+    k: int = Form(..., description="Valor K", ge=1, le=100),
+    policy: str = Form(..., description="Política seleccionada"),
     nodes_csv_file: UploadFile = File(..., description="CSV con nodos"),
     links_csv_file: UploadFile = File(..., description="CSV con relaciones"),
     max_steps: int = Form(10, ge=1, le=50)
@@ -248,6 +250,8 @@ async def propagate_ba_sir(
             "method": "ba-sir",
             "beta": beta,
             "gamma": gamma,
+            "k": k,
+            "policy": policy,
             "max_steps": max_steps,
             "timestamp": datetime.utcnow(),
             "log": log
@@ -272,6 +276,8 @@ async def propagate_ba_sis(
     seed_user: str = Form(..., description="Usuario inicial infectado"),
     beta: float = Form(..., description="Tasa de infección", ge=0.0, le=1.0),
     gamma: float = Form(..., description="Tasa de recuperación", ge=0.0, le=1.0),
+    k: int = Form(..., description="Valor K", ge=1, le=100),
+    policy: str = Form(..., description="Política seleccionada"),
     nodes_csv_file: UploadFile = File(..., description="CSV con nodos"),
     links_csv_file: UploadFile = File(..., description="CSV con relaciones"),
     max_steps: int = Form(10, ge=1, le=50)
@@ -297,6 +303,8 @@ async def propagate_ba_sis(
             "method": "ba-sis",
             "beta": beta,
             "gamma": gamma,
+            "k": k,
+            "policy": policy,
             "max_steps": max_steps,
             "timestamp": datetime.utcnow(),
             "log": log
@@ -321,6 +329,8 @@ async def propagate_hk_sir(
     seed_user: str = Form(..., description="Usuario inicial infectado"),
     beta: float = Form(..., description="Tasa de infección", ge=0.0, le=1.0),
     gamma: float = Form(..., description="Tasa de recuperación", ge=0.0, le=1.0),
+    k: int = Form(..., description="Valor K", ge=1, le=100),
+    policy: str = Form(..., description="Política seleccionada"),
     nodes_csv_file: UploadFile = File(..., description="CSV con nodos"),
     links_csv_file: UploadFile = File(..., description="CSV con relaciones"),
     max_steps: int = Form(10, ge=1, le=50)
@@ -346,6 +356,8 @@ async def propagate_hk_sir(
             "method": "hk-sir",
             "beta": beta,
             "gamma": gamma,
+            "k": k,
+            "policy": policy,
             "max_steps": max_steps,
             "timestamp": datetime.utcnow(),
             "log": log
@@ -370,6 +382,8 @@ async def propagate_hk_sis(
     seed_user: str = Form(..., description="Usuario inicial infectado"),
     beta: float = Form(..., description="Tasa de infección", ge=0.0, le=1.0),
     gamma: float = Form(..., description="Tasa de recuperación", ge=0.0, le=1.0),
+    k: int = Form(..., description="Valor K", ge=1, le=100),
+    policy: str = Form(..., description="Política seleccionada"),
     nodes_csv_file: UploadFile = File(..., description="CSV con nodos"),
     links_csv_file: UploadFile = File(..., description="CSV con relaciones"),
     max_steps: int = Form(10, ge=1, le=50)
@@ -395,6 +409,8 @@ async def propagate_hk_sis(
             "method": "hk-sis",
             "beta": beta,
             "gamma": gamma,
+            "k": k,
+            "policy": policy,
             "max_steps": max_steps,
             "timestamp": datetime.utcnow(),
             "log": log
@@ -419,6 +435,8 @@ async def propagate_rw_sir(
     seed_user: str = Form(..., description="Usuario inicial infectado"),
     beta: float = Form(..., description="Tasa de infección", ge=0.0, le=1.0),
     gamma: float = Form(..., description="Tasa de recuperación", ge=0.0, le=1.0),
+    k: int = Form(..., description="Valor K", ge=1, le=100),
+    policy: str = Form(..., description="Política seleccionada"),
     nodes_csv_file: UploadFile = File(..., description="CSV con nodos"),
     links_csv_file: UploadFile = File(..., description="CSV con relaciones"),
     max_steps: int = Form(10, ge=1, le=50)
@@ -444,6 +462,8 @@ async def propagate_rw_sir(
             "method": "rw-sir",
             "beta": beta,
             "gamma": gamma,
+            "k": k,
+            "policy": policy,
             "max_steps": max_steps,
             "timestamp": datetime.utcnow(),
             "log": log
@@ -468,6 +488,8 @@ async def propagate_rw_sis(
     seed_user: str = Form(..., description="Usuario inicial infectado"),
     beta: float = Form(..., description="Tasa de infección", ge=0.0, le=1.0),
     gamma: float = Form(..., description="Tasa de recuperación", ge=0.0, le=1.0),
+    k: int = Form(..., description="Valor K", ge=1, le=100),
+    policy: str = Form(..., description="Política seleccionada"),
     nodes_csv_file: UploadFile = File(..., description="CSV con nodos"),
     links_csv_file: UploadFile = File(..., description="CSV con relaciones"),
     max_steps: int = Form(10, ge=1, le=50)
@@ -493,6 +515,8 @@ async def propagate_rw_sis(
             "method": "rw-sis",
             "beta": beta,
             "gamma": gamma,
+            "k": k,
+            "policy": policy,
             "max_steps": max_steps,
             "timestamp": datetime.utcnow(),
             "log": log
