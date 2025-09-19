@@ -111,7 +111,10 @@ async def propagate(
     max_steps: int = Form(4, ge=1, le=10),
     method: str = Form("ema", description="Método de actualización: 'ema' o 'sma'"),
     thresholds: str = Form("{}", description="JSON con umbrales y alphas por perfil"),
-    custom_vector: str = Form(None, description="JSON con vector emocional personalizado")
+    custom_vector: str = Form(None, description="JSON con vector emocional personalizado"),
+    k: int = Form(..., description="Valor K", ge=1, le=100),
+    policy: str = Form(..., description="Política seleccionada"),
+    cluster_filtering: str = Form(..., description="Filtrado de clúster")
 ):
     try:
         thresholds_dict = json.loads(thresholds) if thresholds else {}
@@ -148,6 +151,9 @@ async def propagate(
                 "method": method,
                 "max_steps": max_steps,
                 "thresholds": thresholds_dict,
+                "k": k,
+                "policy": policy,
+                "cluster_filtering": cluster_filtering,
                 "timestamp": datetime.utcnow(),
                 "log": log
             }
@@ -178,8 +184,11 @@ async def propagate(
                 "propagation_id": propagation_id,
                 "seed_user": seed_user,
                 "message": message,
-                "method": "rw-sir",
+                "method": "rip-dsn",
                 "max_steps": max_steps,
+                "k": k,
+                "policy": policy,
+                "cluster_filtering": cluster_filtering,
                 "timestamp": datetime.utcnow(),
                 "log": log
             }
