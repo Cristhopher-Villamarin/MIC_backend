@@ -762,3 +762,110 @@ def calculate_alcance_final(propagation_log: List[Dict[str, Any]]) -> int:
             unique_nodes.add(event['publisher'])
     
     return len(unique_nodes)
+
+def calculate_t_pico(propagation_log: List[Dict[str, Any]], method: str = "sir") -> Dict[int, int]:
+    """
+    Calcula t_pico: el número de nodos infectados/activos en cada paso de tiempo.
+    
+    Para modelos SIR/SIS: cuenta nodos infectados en cada paso t
+    Para RIP-DSN: cuenta nodos que reenvían o modifican en cada paso t
+    
+    Args:
+        propagation_log: Lista de eventos de propagación
+        method: Tipo de propagación ("sir", "sis", "rip-dsn", "emotion")
+        
+    Returns:
+        Diccionario con {paso_tiempo: numero_nodos_activos}
+    """
+    print(f"\n=== CALCULANDO T_PICO PARA MÉTODO: {method} ===")
+    print(f"Total de eventos en el log: {len(propagation_log)}")
+    
+    t_pico = {}
+    
+    if method in ["sir", "sis"]:
+        print(f"\n--- Procesando modelo {method.upper()} ---")
+        # Para SIR/SIS: contar nodos infectados en cada paso de tiempo
+        infected_by_time = {}
+        
+        for i, event in enumerate(propagation_log):
+            t = event.get('t', 0)
+            action = event.get('action', '')
+            receiver = event.get('receiver', '')
+            sender = event.get('sender', '')
+            
+            print(f"Evento {i+1}: t={t}, action='{action}', sender='{sender}', receiver='{receiver}'")
+            
+            if action == 'infect':
+                # Nuevo nodo infectado
+                if t not in infected_by_time:
+                    infected_by_time[t] = set()
+                    print(f"  → Creando conjunto para tiempo t={t}")
+                infected_by_time[t].add(receiver)
+                print(f"  → Agregando {receiver} a infectados en t={t}")
+                print(f"  → Infectados en t={t}: {list(infected_by_time[t])}")
+            elif action == 'recover':
+                # Nodo recuperado (solo para SIR, en SIS vuelve a susceptible)
+                print(f"  → {receiver} se recupera en t={t} (no se cuenta como infectado)")
+                if method == "sir":
+                    # En SIR, los recuperados no se cuentan como infectados
+                    pass
+                else:  # SIS
+                    # En SIS, los recuperados vuelven a susceptibles, no se cuentan
+                    pass
+            else:
+                print(f"  → Acción '{action}' ignorada para conteo de infectados")
+        
+        print(f"\n--- Resumen de infectados por tiempo ---")
+        # Calcular el número total de infectados en cada paso de tiempo
+        for t in sorted(infected_by_time.keys()):
+            count = len(infected_by_time[t])
+            t_pico[str(t)] = count
+            print(f"Tiempo t={t}: {count} nodos infectados {list(infected_by_time[t])}")
+            
+    elif method in ["rip-dsn", "emotion"]:
+        print(f"\n--- Procesando modelo {method.upper()} ---")
+        # Para RIP-DSN y propagación emocional: contar nodos que reenvían o modifican
+        active_by_time = {}
+        
+        for i, event in enumerate(propagation_log):
+            t = event.get('t', 0)
+            action = event.get('action', '')
+            receiver = event.get('receiver', '')
+            sender = event.get('sender', '')
+            publisher = event.get('publisher', '')
+            
+            print(f"Evento {i+1}: t={t}, action='{action}', sender='{sender}', receiver='{receiver}', publisher='{publisher}'")
+            
+            if action in ['reenviar', 'modificar', 'forward']:
+                # Nodo que reenvía o modifica
+                if t not in active_by_time:
+                    active_by_time[t] = set()
+                    print(f"  → Creando conjunto para tiempo t={t}")
+                active_by_time[t].add(sender)
+                print(f"  → Agregando {sender} a activos en t={t} (acción: {action})")
+                print(f"  → Activos en t={t}: {list(active_by_time[t])}")
+            elif action == 'publish':
+                # Nodo que publica inicialmente
+                if t not in active_by_time:
+                    active_by_time[t] = set()
+                    print(f"  → Creando conjunto para tiempo t={t}")
+                publisher_node = publisher or receiver
+                active_by_time[t].add(publisher_node)
+                print(f"  → Agregando {publisher_node} a activos en t={t} (publicación inicial)")
+                print(f"  → Activos en t={t}: {list(active_by_time[t])}")
+            else:
+                print(f"  → Acción '{action}' ignorada para conteo de activos")
+        
+        print(f"\n--- Resumen de activos por tiempo ---")
+        # Calcular el número total de nodos activos en cada paso de tiempo
+        for t in sorted(active_by_time.keys()):
+            count = len(active_by_time[t])
+            t_pico[str(t)] = count
+            print(f"Tiempo t={t}: {count} nodos activos {list(active_by_time[t])}")
+    
+    print(f"\n=== RESULTADO FINAL T_PICO ===")
+    for t_str in sorted(t_pico.keys(), key=int):
+        print(f"t_pico['{t_str}'] = {t_pico[t_str]}")
+    print("=" * 50)
+    
+    return t_pico
