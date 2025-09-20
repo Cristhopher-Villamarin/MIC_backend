@@ -869,3 +869,151 @@ def calculate_t_pico(propagation_log: List[Dict[str, Any]], method: str = "sir")
     print("=" * 50)
     
     return t_pico
+
+def calculate_pct_modificar(propagation_log: List[Dict[str, Any]], total_nodes: int) -> float:
+    """
+    Calcula el porcentaje de nodos que modificaron al menos un mensaje durante la propagación.
+    
+    Args:
+        propagation_log: Lista de eventos de propagación
+        total_nodes: Número total de nodos en la red
+        
+    Returns:
+        Porcentaje de nodos que modificaron mensajes (0.0 a 100.0)
+    """
+    print(f"\n=== CALCULANDO PCT_MODIFICAR ===")
+    print(f"Total de nodos en la red: {total_nodes}")
+    print(f"Total de eventos en el log: {len(propagation_log)}")
+    print()
+    
+    nodes_that_modified = set()
+    
+    print("--- ANÁLISIS DE EVENTOS ---")
+    for i, event in enumerate(propagation_log):
+        action = event.get('action', '')
+        receiver = event.get('receiver', '')
+        sender = event.get('sender', '')
+        publisher = event.get('publisher', '')
+        t = event.get('t', 0)
+        
+        print(f"Evento {i+1}: t={t}, sender='{sender}', receiver='{receiver}', publisher='{publisher}', action='{action}'")
+        
+        if action == 'modificar':
+            nodes_that_modified.add(receiver)
+            print(f"  → NODO {receiver} MODIFICÓ mensaje")
+        else:
+            print(f"  → Acción '{action}' - no es modificar")
+    
+    print(f"\n--- RESULTADO PCT_MODIFICAR ---")
+    print(f"Nodos que modificaron: {sorted(list(nodes_that_modified))}")
+    print(f"Cantidad de nodos que modificaron: {len(nodes_that_modified)}")
+    
+    if total_nodes == 0:
+        print("Total de nodos es 0, retornando 0%")
+        return 0.0
+    
+    percentage = (len(nodes_that_modified) / total_nodes) * 100
+    result = round(percentage, 2)
+    print(f"Porcentaje: ({len(nodes_that_modified)} / {total_nodes}) * 100 = {result}%")
+    print("=" * 50)
+    
+    return result
+
+def calculate_pct_reenviar(propagation_log: List[Dict[str, Any]], total_nodes: int) -> float:
+    """
+    Calcula el porcentaje de nodos que reenviaron al menos un mensaje durante la propagación.
+    
+    Args:
+        propagation_log: Lista de eventos de propagación
+        total_nodes: Número total de nodos en la red
+        
+    Returns:
+        Porcentaje de nodos que reenviaron mensajes (0.0 a 100.0)
+    """
+    print(f"\n=== CALCULANDO PCT_REENVIAR ===")
+    print(f"Total de nodos en la red: {total_nodes}")
+    print(f"Total de eventos en el log: {len(propagation_log)}")
+    print()
+    
+    nodes_that_forwarded = set()
+    
+    print("--- ANÁLISIS DE EVENTOS ---")
+    for i, event in enumerate(propagation_log):
+        action = event.get('action', '')
+        receiver = event.get('receiver', '')
+        sender = event.get('sender', '')
+        publisher = event.get('publisher', '')
+        t = event.get('t', 0)
+        
+        print(f"Evento {i+1}: t={t}, sender='{sender}', receiver='{receiver}', publisher='{publisher}', action='{action}'")
+        
+        if action in ['reenviar', 'forward']:
+            nodes_that_forwarded.add(receiver)
+            print(f"  → NODO {receiver} REENVIÓ mensaje (acción: {action})")
+        else:
+            print(f"  → Acción '{action}' - no es reenvío")
+    
+    print(f"\n--- RESULTADO PCT_REENVIAR ---")
+    print(f"Nodos que reenviaron: {sorted(list(nodes_that_forwarded))}")
+    print(f"Cantidad de nodos que reenviaron: {len(nodes_that_forwarded)}")
+    
+    if total_nodes == 0:
+        print("Total de nodos es 0, retornando 0%")
+        return 0.0
+    
+    percentage = (len(nodes_that_forwarded) / total_nodes) * 100
+    result = round(percentage, 2)
+    print(f"Porcentaje: ({len(nodes_that_forwarded)} / {total_nodes}) * 100 = {result}%")
+    print("=" * 50)
+    
+    return result
+
+def calculate_pct_ignorar(propagation_log: List[Dict[str, Any]], total_nodes: int) -> float:
+    """
+    Calcula el porcentaje de nodos que ignoraron al menos un mensaje durante la propagación.
+    Un nodo ignora un mensaje cuando tiene la acción "ignorar" en el log.
+    
+    Args:
+        propagation_log: Lista de eventos de propagación
+        total_nodes: Número total de nodos en la red
+        
+    Returns:
+        Porcentaje de nodos que ignoraron mensajes (0.0 a 100.0)
+    """
+    print(f"\n=== CALCULANDO PCT_IGNORAR ===")
+    print(f"Total de nodos en la red: {total_nodes}")
+    print(f"Total de eventos en el log: {len(propagation_log)}")
+    print()
+    
+    nodes_that_ignored = set()
+    
+    print("--- ANÁLISIS DE EVENTOS ---")
+    for i, event in enumerate(propagation_log):
+        action = event.get('action', '')
+        receiver = event.get('receiver', '')
+        sender = event.get('sender', '')
+        publisher = event.get('publisher', '')
+        t = event.get('t', 0)
+        
+        print(f"Evento {i+1}: t={t}, sender='{sender}', receiver='{receiver}', publisher='{publisher}', action='{action}'")
+        
+        if action == 'ignorar':
+            nodes_that_ignored.add(receiver)
+            print(f"  → NODO {receiver} IGNORÓ mensaje")
+        else:
+            print(f"  → Acción '{action}' - no es ignorar")
+    
+    print(f"\n--- RESULTADO PCT_IGNORAR ---")
+    print(f"Nodos que ignoraron: {sorted(list(nodes_that_ignored))}")
+    print(f"Cantidad de nodos que ignoraron: {len(nodes_that_ignored)}")
+    
+    if total_nodes == 0:
+        print("Total de nodos es 0, retornando 0%")
+        return 0.0
+    
+    percentage = (len(nodes_that_ignored) / total_nodes) * 100
+    result = round(percentage, 2)
+    print(f"Porcentaje: ({len(nodes_that_ignored)} / {total_nodes}) * 100 = {result}%")
+    print("=" * 50)
+    
+    return result

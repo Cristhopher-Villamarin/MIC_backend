@@ -8,7 +8,7 @@ import json
 import numpy as np
 import tensorflow as tf
 from generate_vectors import generar_datos_sinteticos_cargado, cargar_modelo_y_escalador
-from utils import EmotionAnalyzer, PropagationEngine, SimplePropagationEngine, SIRPropagationEngine, SISPropagationEngine, RWSIRPropagationEngine, RWSISPropagationEngine, calculate_alcance_final, calculate_t_pico
+from utils import EmotionAnalyzer, PropagationEngine, SimplePropagationEngine, SIRPropagationEngine, SISPropagationEngine, RWSIRPropagationEngine, RWSISPropagationEngine, calculate_alcance_final, calculate_t_pico, calculate_pct_modificar, calculate_pct_reenviar, calculate_pct_ignorar
 from pymongo import MongoClient
 from datetime import datetime
 import uuid
@@ -146,6 +146,12 @@ async def propagate(
             alcance_final = calculate_alcance_final(log)
             t_pico = calculate_t_pico(log, method="emotion")
             
+            # Calcular nuevas métricas para RIP DSN
+            total_nodes = len(engine.graph.nodes()) if engine.graph else 0
+            pct_modificar = calculate_pct_modificar(log, total_nodes)
+            pct_reenviar = calculate_pct_reenviar(log, total_nodes)
+            pct_ignorar = calculate_pct_ignorar(log, total_nodes)
+            
             # Save propagation log to MongoDB
             propagation_id = str(uuid.uuid4())
             propagation_document = {
@@ -160,6 +166,9 @@ async def propagate(
                 "cluster_filtering": cluster_filtering,
                 "alcance_final": alcance_final,
                 "t_pico": t_pico,
+                "pct_modificar": pct_modificar,
+                "pct_reenviar": pct_reenviar,
+                "pct_ignorar": pct_ignorar,
                 "timestamp": datetime.utcnow(),
                 "log": log
             }
@@ -188,6 +197,12 @@ async def propagate(
             alcance_final = calculate_alcance_final(log)
             t_pico = calculate_t_pico(log, method="rip-dsn")
             
+            # Calcular nuevas métricas para RIP DSN
+            total_nodes = len(simple_engine.nodes) if simple_engine.nodes else 0
+            pct_modificar = calculate_pct_modificar(log, total_nodes)
+            pct_reenviar = calculate_pct_reenviar(log, total_nodes)
+            pct_ignorar = calculate_pct_ignorar(log, total_nodes)
+            
             # Save RIP-DSN propagation log to MongoDB
             propagation_id = str(uuid.uuid4())
             propagation_document = {
@@ -201,6 +216,9 @@ async def propagate(
                 "cluster_filtering": cluster_filtering,
                 "alcance_final": alcance_final,
                 "t_pico": t_pico,
+                "pct_modificar": pct_modificar,
+                "pct_reenviar": pct_reenviar,
+                "pct_ignorar": pct_ignorar,
                 "timestamp": datetime.utcnow(),
                 "log": log
             }
