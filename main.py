@@ -8,7 +8,7 @@ import json
 import numpy as np
 import tensorflow as tf
 from generate_vectors import generar_datos_sinteticos_cargado, cargar_modelo_y_escalador
-from utils import EmotionAnalyzer, PropagationEngine, SimplePropagationEngine, SIRPropagationEngine, SISPropagationEngine, RWSIRPropagationEngine, RWSISPropagationEngine
+from utils import EmotionAnalyzer, PropagationEngine, SimplePropagationEngine, SIRPropagationEngine, SISPropagationEngine, RWSIRPropagationEngine, RWSISPropagationEngine, calculate_alcance_final
 from pymongo import MongoClient
 from datetime import datetime
 import uuid
@@ -142,6 +142,9 @@ async def propagate(
                 vector = analyzer.vector(message)
             vector_dict, log = engine.propagate(seed_user, message, max_steps, method=method, custom_vector=vector)
             
+            # Calcular alcance final
+            alcance_final = calculate_alcance_final(log)
+            
             # Save propagation log to MongoDB
             propagation_id = str(uuid.uuid4())
             propagation_document = {
@@ -154,6 +157,7 @@ async def propagate(
                 "k": k,
                 "policy": policy,
                 "cluster_filtering": cluster_filtering,
+                "alcance_final": alcance_final,
                 "timestamp": datetime.utcnow(),
                 "log": log
             }
@@ -178,6 +182,9 @@ async def propagate(
                 raise HTTPException(400, detail=f"El usuario inicial '{seed_user}' no se encuentra en la red")
             log = simple_engine.propagate(seed_user, message, max_steps)
             
+            # Calcular alcance final
+            alcance_final = calculate_alcance_final(log)
+            
             # Save RIP-DSN propagation log to MongoDB
             propagation_id = str(uuid.uuid4())
             propagation_document = {
@@ -189,6 +196,7 @@ async def propagate(
                 "k": k,
                 "policy": policy,
                 "cluster_filtering": cluster_filtering,
+                "alcance_final": alcance_final,
                 "timestamp": datetime.utcnow(),
                 "log": log
             }
@@ -251,6 +259,9 @@ async def propagate_ba_sir(
         
         log = sir_engine.propagate(seed_user, beta, gamma, max_steps)
         
+        # Calcular alcance final
+        alcance_final = calculate_alcance_final(log)
+        
         # Save SIR propagation log to MongoDB
         propagation_id = str(uuid.uuid4())
         propagation_document = {
@@ -262,6 +273,7 @@ async def propagate_ba_sir(
             "k": k,
             "policy": policy,
             "max_steps": max_steps,
+            "alcance_final": alcance_final,
             "timestamp": datetime.utcnow(),
             "log": log
         }
@@ -304,6 +316,9 @@ async def propagate_ba_sis(
         
         log = sis_engine.propagate(seed_user, beta, gamma, max_steps)
         
+        # Calcular alcance final
+        alcance_final = calculate_alcance_final(log)
+        
         # Save SIS propagation log to MongoDB
         propagation_id = str(uuid.uuid4())
         propagation_document = {
@@ -315,6 +330,7 @@ async def propagate_ba_sis(
             "k": k,
             "policy": policy,
             "max_steps": max_steps,
+            "alcance_final": alcance_final,
             "timestamp": datetime.utcnow(),
             "log": log
         }
@@ -357,6 +373,9 @@ async def propagate_hk_sir(
         
         log = sir_engine.propagate(seed_user, beta, gamma, max_steps)
         
+        # Calcular alcance final
+        alcance_final = calculate_alcance_final(log)
+        
         # Save Holme-Kim SIR propagation log to MongoDB
         propagation_id = str(uuid.uuid4())
         propagation_document = {
@@ -368,6 +387,7 @@ async def propagate_hk_sir(
             "k": k,
             "policy": policy,
             "max_steps": max_steps,
+            "alcance_final": alcance_final,
             "timestamp": datetime.utcnow(),
             "log": log
         }
@@ -410,6 +430,9 @@ async def propagate_hk_sis(
         
         log = sis_engine.propagate(seed_user, beta, gamma, max_steps)
         
+        # Calcular alcance final
+        alcance_final = calculate_alcance_final(log)
+        
         # Save Holme-Kim SIS propagation log to MongoDB
         propagation_id = str(uuid.uuid4())
         propagation_document = {
@@ -421,6 +444,7 @@ async def propagate_hk_sis(
             "k": k,
             "policy": policy,
             "max_steps": max_steps,
+            "alcance_final": alcance_final,
             "timestamp": datetime.utcnow(),
             "log": log
         }
@@ -463,6 +487,9 @@ async def propagate_rw_sir(
         
         log = rw_sir_engine.propagate(seed_user, beta, gamma, max_steps)
         
+        # Calcular alcance final
+        alcance_final = calculate_alcance_final(log)
+        
         # Save Real World SIR propagation log to MongoDB
         propagation_id = str(uuid.uuid4())
         propagation_document = {
@@ -474,6 +501,7 @@ async def propagate_rw_sir(
             "k": k,
             "policy": policy,
             "max_steps": max_steps,
+            "alcance_final": alcance_final,
             "timestamp": datetime.utcnow(),
             "log": log
         }
@@ -516,6 +544,9 @@ async def propagate_rw_sis(
         
         log = rw_sis_engine.propagate(seed_user, beta, gamma, max_steps)
         
+        # Calcular alcance final
+        alcance_final = calculate_alcance_final(log)
+        
         # Save Real World SIS propagation log to MongoDB
         propagation_id = str(uuid.uuid4())
         propagation_document = {
@@ -527,6 +558,7 @@ async def propagate_rw_sis(
             "k": k,
             "policy": policy,
             "max_steps": max_steps,
+            "alcance_final": alcance_final,
             "timestamp": datetime.utcnow(),
             "log": log
         }

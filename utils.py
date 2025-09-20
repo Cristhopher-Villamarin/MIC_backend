@@ -734,3 +734,31 @@ class RWSISPropagationEngine:
             time_step += 1
 
         return propagation_log
+
+def calculate_alcance_final(propagation_log: List[Dict[str, Any]]) -> int:
+    """
+    Calcula el alcance final de una propagación contando el número de nodos únicos
+    que participaron en la propagación (infectados, recuperados, o que recibieron mensajes).
+    
+    Args:
+        propagation_log: Lista de eventos de propagación
+        
+    Returns:
+        Número de nodos únicos que participaron en la propagación
+    """
+    unique_nodes = set()
+    
+    for event in propagation_log:
+        # Agregar nodos que enviaron mensajes
+        if 'sender' in event and event['sender'] is not None:
+            unique_nodes.add(event['sender'])
+        
+        # Agregar nodos que recibieron mensajes
+        if 'receiver' in event:
+            unique_nodes.add(event['receiver'])
+        
+        # Agregar nodos que publicaron mensajes
+        if 'publisher' in event:
+            unique_nodes.add(event['publisher'])
+    
+    return len(unique_nodes)
