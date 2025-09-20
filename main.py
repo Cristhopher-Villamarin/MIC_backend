@@ -114,7 +114,8 @@ async def propagate(
     custom_vector: str = Form(None, description="JSON con vector emocional personalizado"),
     k: int = Form(..., description="Valor K", ge=1, le=100),
     policy: str = Form(..., description="Política seleccionada"),
-    cluster_filtering: str = Form(..., description="Filtrado de clúster")
+    cluster_filtering: str = Form(..., description="Filtrado de clúster"),
+    propagation_name: str = Form(..., description="Nombre de la propagación")
 ):
     try:
         thresholds_dict = json.loads(thresholds) if thresholds else {}
@@ -156,6 +157,7 @@ async def propagate(
             propagation_id = str(uuid.uuid4())
             propagation_document = {
                 "propagation_id": propagation_id,
+                "propagation_name": propagation_name,
                 "seed_user": seed_user,
                 "message": message,
                 "method": method,
@@ -207,6 +209,7 @@ async def propagate(
             propagation_id = str(uuid.uuid4())
             propagation_document = {
                 "propagation_id": propagation_id,
+                "propagation_name": propagation_name,
                 "seed_user": seed_user,
                 "message": message,
                 "method": "rip-dsn",
@@ -266,7 +269,8 @@ async def propagate_ba_sir(
     policy: str = Form(..., description="Política seleccionada"),
     nodes_csv_file: UploadFile = File(..., description="CSV con nodos"),
     links_csv_file: UploadFile = File(..., description="CSV con relaciones"),
-    max_steps: int = Form(10, ge=1, le=50)
+    max_steps: int = Form(10, ge=1, le=50),
+    propagation_name: str = Form(..., description="Nombre de la propagación")
 ):
     """
     Ejecuta propagación SIR (Susceptible-Infected-Recovered) en la red.
@@ -289,6 +293,7 @@ async def propagate_ba_sir(
         propagation_id = str(uuid.uuid4())
         propagation_document = {
             "propagation_id": propagation_id,
+            "propagation_name": propagation_name,
             "seed_user": seed_user,
             "method": "ba-sir",
             "beta": beta,
@@ -325,7 +330,8 @@ async def propagate_ba_sis(
     policy: str = Form(..., description="Política seleccionada"),
     nodes_csv_file: UploadFile = File(..., description="CSV con nodos"),
     links_csv_file: UploadFile = File(..., description="CSV con relaciones"),
-    max_steps: int = Form(10, ge=1, le=50)
+    max_steps: int = Form(10, ge=1, le=50),
+    propagation_name: str = Form(..., description="Nombre de la propagación")
 ):
     """
     Ejecuta propagación SIS (Susceptible-Infected-Susceptible) en la red.
@@ -348,6 +354,7 @@ async def propagate_ba_sis(
         propagation_id = str(uuid.uuid4())
         propagation_document = {
             "propagation_id": propagation_id,
+            "propagation_name": propagation_name,
             "seed_user": seed_user,
             "method": "ba-sis",
             "beta": beta,
@@ -384,7 +391,8 @@ async def propagate_hk_sir(
     policy: str = Form(..., description="Política seleccionada"),
     nodes_csv_file: UploadFile = File(..., description="CSV con nodos"),
     links_csv_file: UploadFile = File(..., description="CSV con relaciones"),
-    max_steps: int = Form(10, ge=1, le=50)
+    max_steps: int = Form(10, ge=1, le=50),
+    propagation_name: str = Form(..., description="Nombre de la propagación")
 ):
     """
     Ejecuta propagación SIR (Susceptible-Infected-Recovered) en red Holme-Kim.
@@ -407,6 +415,7 @@ async def propagate_hk_sir(
         propagation_id = str(uuid.uuid4())
         propagation_document = {
             "propagation_id": propagation_id,
+            "propagation_name": propagation_name,
             "seed_user": seed_user,
             "method": "hk-sir",
             "beta": beta,
@@ -443,7 +452,8 @@ async def propagate_hk_sis(
     policy: str = Form(..., description="Política seleccionada"),
     nodes_csv_file: UploadFile = File(..., description="CSV con nodos"),
     links_csv_file: UploadFile = File(..., description="CSV con relaciones"),
-    max_steps: int = Form(10, ge=1, le=50)
+    max_steps: int = Form(10, ge=1, le=50),
+    propagation_name: str = Form(..., description="Nombre de la propagación")
 ):
     """
     Ejecuta propagación SIS (Susceptible-Infected-Susceptible) en red Holme-Kim.
@@ -466,6 +476,7 @@ async def propagate_hk_sis(
         propagation_id = str(uuid.uuid4())
         propagation_document = {
             "propagation_id": propagation_id,
+            "propagation_name": propagation_name,
             "seed_user": seed_user,
             "method": "hk-sis",
             "beta": beta,
@@ -502,7 +513,8 @@ async def propagate_rw_sir(
     policy: str = Form(..., description="Política seleccionada"),
     nodes_csv_file: UploadFile = File(..., description="CSV con nodos"),
     links_csv_file: UploadFile = File(..., description="CSV con relaciones"),
-    max_steps: int = Form(10, ge=1, le=50)
+    max_steps: int = Form(10, ge=1, le=50),
+    propagation_name: str = Form(..., description="Nombre de la propagación")
 ):
     """
     Ejecuta propagación SIR (Susceptible-Infected-Recovered) en red del mundo real.
@@ -525,6 +537,7 @@ async def propagate_rw_sir(
         propagation_id = str(uuid.uuid4())
         propagation_document = {
             "propagation_id": propagation_id,
+            "propagation_name": propagation_name,
             "seed_user": seed_user,
             "method": "rw-sir",
             "beta": beta,
@@ -561,7 +574,8 @@ async def propagate_rw_sis(
     policy: str = Form(..., description="Política seleccionada"),
     nodes_csv_file: UploadFile = File(..., description="CSV con nodos"),
     links_csv_file: UploadFile = File(..., description="CSV con relaciones"),
-    max_steps: int = Form(10, ge=1, le=50)
+    max_steps: int = Form(10, ge=1, le=50),
+    propagation_name: str = Form(..., description="Nombre de la propagación")
 ):
     """
     Ejecuta propagación SIS (Susceptible-Infected-Susceptible) en red del mundo real.
@@ -584,6 +598,7 @@ async def propagate_rw_sis(
         propagation_id = str(uuid.uuid4())
         propagation_document = {
             "propagation_id": propagation_id,
+            "propagation_name": propagation_name,
             "seed_user": seed_user,
             "method": "rw-sis",
             "beta": beta,
