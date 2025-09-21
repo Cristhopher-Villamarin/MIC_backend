@@ -115,7 +115,9 @@ async def propagate(
     k: int = Form(..., description="Valor K", ge=1, le=100),
     policy: str = Form(..., description="Política seleccionada"),
     cluster_filtering: str = Form(..., description="Filtrado de clúster"),
-    propagation_name: str = Form(..., description="Nombre de la propagación")
+    propagation_name: str = Form(..., description="Nombre de la propagación"),
+    tipo_red: str = Form("barabasi-albert", description="Tipo de red"),
+    metodo: str = Form("RIP-DSN", description="Método de propagación")
 ):
     try:
         thresholds_dict = json.loads(thresholds) if thresholds else {}
@@ -161,6 +163,8 @@ async def propagate(
                 "seed_user": seed_user,
                 "message": message,
                 "method": method,
+                "tipo_red": tipo_red,  # Usar el valor recibido del frontend
+                "metodo": metodo,  # Usar el valor recibido del frontend
                 "max_steps": max_steps,
                 "thresholds": thresholds_dict,
                 "k": k,
@@ -213,6 +217,8 @@ async def propagate(
                 "seed_user": seed_user,
                 "message": message,
                 "method": "rip-dsn",
+                "tipo_red": tipo_red,  # Usar el valor recibido del frontend
+                "metodo": metodo,  # Usar el valor recibido del frontend
                 "max_steps": max_steps,
                 "k": k,
                 "policy": policy,
@@ -270,7 +276,9 @@ async def propagate_ba_sir(
     nodes_csv_file: UploadFile = File(..., description="CSV con nodos"),
     links_csv_file: UploadFile = File(..., description="CSV con relaciones"),
     max_steps: int = Form(10, ge=1, le=50),
-    propagation_name: str = Form(..., description="Nombre de la propagación")
+    propagation_name: str = Form(..., description="Nombre de la propagación"),
+    tipo_red: str = Form("barabasi-albert", description="Tipo de red"),
+    metodo: str = Form("SIR", description="Método de propagación")
 ):
     """
     Ejecuta propagación SIR (Susceptible-Infected-Recovered) en la red.
@@ -296,6 +304,8 @@ async def propagate_ba_sir(
             "propagation_name": propagation_name,
             "seed_user": seed_user,
             "method": "ba-sir",
+            "tipo_red": tipo_red,  # Usar el valor recibido del frontend
+            "metodo": metodo,  # Usar el valor recibido del frontend
             "beta": beta,
             "gamma": gamma,
             "k": k,
@@ -331,7 +341,9 @@ async def propagate_ba_sis(
     nodes_csv_file: UploadFile = File(..., description="CSV con nodos"),
     links_csv_file: UploadFile = File(..., description="CSV con relaciones"),
     max_steps: int = Form(10, ge=1, le=50),
-    propagation_name: str = Form(..., description="Nombre de la propagación")
+    propagation_name: str = Form(..., description="Nombre de la propagación"),
+    tipo_red: str = Form("barabasi-albert", description="Tipo de red"),
+    metodo: str = Form("SIS", description="Método de propagación")
 ):
     """
     Ejecuta propagación SIS (Susceptible-Infected-Susceptible) en la red.
@@ -357,6 +369,8 @@ async def propagate_ba_sis(
             "propagation_name": propagation_name,
             "seed_user": seed_user,
             "method": "ba-sis",
+            "tipo_red": tipo_red,  # Usar el valor recibido del frontend
+            "metodo": metodo,  # Usar el valor recibido del frontend
             "beta": beta,
             "gamma": gamma,
             "k": k,
@@ -392,7 +406,9 @@ async def propagate_hk_sir(
     nodes_csv_file: UploadFile = File(..., description="CSV con nodos"),
     links_csv_file: UploadFile = File(..., description="CSV con relaciones"),
     max_steps: int = Form(10, ge=1, le=50),
-    propagation_name: str = Form(..., description="Nombre de la propagación")
+    propagation_name: str = Form(..., description="Nombre de la propagación"),
+    tipo_red: str = Form("holme-kim", description="Tipo de red"),
+    metodo: str = Form("SIR", description="Método de propagación")
 ):
     """
     Ejecuta propagación SIR (Susceptible-Infected-Recovered) en red Holme-Kim.
@@ -418,6 +434,8 @@ async def propagate_hk_sir(
             "propagation_name": propagation_name,
             "seed_user": seed_user,
             "method": "hk-sir",
+            "tipo_red": tipo_red,  # Usar el valor recibido del frontend
+            "metodo": metodo,  # Usar el valor recibido del frontend
             "beta": beta,
             "gamma": gamma,
             "k": k,
@@ -453,7 +471,9 @@ async def propagate_hk_sis(
     nodes_csv_file: UploadFile = File(..., description="CSV con nodos"),
     links_csv_file: UploadFile = File(..., description="CSV con relaciones"),
     max_steps: int = Form(10, ge=1, le=50),
-    propagation_name: str = Form(..., description="Nombre de la propagación")
+    propagation_name: str = Form(..., description="Nombre de la propagación"),
+    tipo_red: str = Form("holme-kim", description="Tipo de red"),
+    metodo: str = Form("SIS", description="Método de propagación")
 ):
     """
     Ejecuta propagación SIS (Susceptible-Infected-Susceptible) en red Holme-Kim.
@@ -479,6 +499,8 @@ async def propagate_hk_sis(
             "propagation_name": propagation_name,
             "seed_user": seed_user,
             "method": "hk-sis",
+            "tipo_red": tipo_red,  # Usar el valor recibido del frontend
+            "metodo": metodo,  # Usar el valor recibido del frontend
             "beta": beta,
             "gamma": gamma,
             "k": k,
@@ -514,7 +536,9 @@ async def propagate_rw_sir(
     nodes_csv_file: UploadFile = File(..., description="CSV con nodos"),
     links_csv_file: UploadFile = File(..., description="CSV con relaciones"),
     max_steps: int = Form(10, ge=1, le=50),
-    propagation_name: str = Form(..., description="Nombre de la propagación")
+    propagation_name: str = Form(..., description="Nombre de la propagación"),
+    tipo_red: str = Form("real-world", description="Tipo de red"),
+    metodo: str = Form("SIR", description="Método de propagación")
 ):
     """
     Ejecuta propagación SIR (Susceptible-Infected-Recovered) en red del mundo real.
@@ -540,6 +564,8 @@ async def propagate_rw_sir(
             "propagation_name": propagation_name,
             "seed_user": seed_user,
             "method": "rw-sir",
+            "tipo_red": tipo_red,  # Usar el valor recibido del frontend
+            "metodo": metodo,  # Usar el valor recibido del frontend
             "beta": beta,
             "gamma": gamma,
             "k": k,
@@ -575,7 +601,9 @@ async def propagate_rw_sis(
     nodes_csv_file: UploadFile = File(..., description="CSV con nodos"),
     links_csv_file: UploadFile = File(..., description="CSV con relaciones"),
     max_steps: int = Form(10, ge=1, le=50),
-    propagation_name: str = Form(..., description="Nombre de la propagación")
+    propagation_name: str = Form(..., description="Nombre de la propagación"),
+    tipo_red: str = Form("real-world", description="Tipo de red"),
+    metodo: str = Form("SIS", description="Método de propagación")
 ):
     """
     Ejecuta propagación SIS (Susceptible-Infected-Susceptible) en red del mundo real.
@@ -601,6 +629,8 @@ async def propagate_rw_sis(
             "propagation_name": propagation_name,
             "seed_user": seed_user,
             "method": "rw-sis",
+            "tipo_red": tipo_red,  # Usar el valor recibido del frontend
+            "metodo": metodo,  # Usar el valor recibido del frontend
             "beta": beta,
             "gamma": gamma,
             "k": k,
@@ -633,36 +663,38 @@ async def get_reports():
     """
     try:
         # Obtener todos los documentos de propagación
-        reports = list(collection.find({}, {"_id": 1, "propagation_name": 1, "method": 1, "seed_user": 1, "policy": 1, "alcance_final": 1, "t_pico": 1, "timestamp": 1}))
+        reports = list(collection.find({}, {"_id": 1, "propagation_name": 1, "method": 1, "tipo_red": 1, "metodo": 1, "seed_user": 1, "policy": 1, "alcance_final": 1, "t_pico": 1, "timestamp": 1}))
         
         # Procesar los datos para el frontend
         processed_reports = []
         for report in reports:
-            # Determinar el tipo de red basado en el método
-            network_type = "unknown"
-            propagation_method = "unknown"
+            # Usar los campos explícitos si están disponibles, sino usar la lógica de fallback
+            network_type = report.get("tipo_red", "unknown")
+            propagation_method = report.get("metodo", "unknown")
             
-            if "ba-" in report.get("method", ""):
-                network_type = "barabasi-albert"
-            elif "hk-" in report.get("method", ""):
-                network_type = "holme-kim"
-            elif "rw-" in report.get("method", ""):
-                network_type = "real-world"
-            elif report.get("method") == "rip-dsn":
-                network_type = "barabasi-albert"  # RIP-DSN se usa principalmente con BA
-            elif report.get("method") in ["ema", "sma"]:
-                network_type = "barabasi-albert"  # Métodos emocionales se usan principalmente con BA
+            # Fallback para reportes antiguos sin los nuevos campos
+            if network_type == "unknown":
+                if "ba-" in report.get("method", ""):
+                    network_type = "barabasi-albert"
+                elif "hk-" in report.get("method", ""):
+                    network_type = "holme-kim"
+                elif "rw-" in report.get("method", ""):
+                    network_type = "real-world"
+                elif report.get("method") == "rip-dsn":
+                    network_type = "barabasi-albert"  # RIP-DSN se usa principalmente con BA
+                elif report.get("method") in ["ema", "sma"]:
+                    network_type = "barabasi-albert"  # Métodos emocionales se usan principalmente con BA
             
-            # Determinar el método de propagación
-            method = report.get("method", "")
-            if "sir" in method:
-                propagation_method = "SIR"
-            elif "sis" in method:
-                propagation_method = "SIS"
-            elif method == "rip-dsn":
-                propagation_method = "RIP-DNS"
-            elif method in ["ema", "sma"]:
-                propagation_method = "RIP-DNS"  # Métodos emocionales
+            if propagation_method == "unknown":
+                method = report.get("method", "")
+                if "sir" in method:
+                    propagation_method = "SIR"
+                elif "sis" in method:
+                    propagation_method = "SIS"
+                elif method == "rip-dsn":
+                    propagation_method = "RIP-DSN"
+                elif method in ["ema", "sma"]:
+                    propagation_method = "RIP-DSN"  # Métodos emocionales
             
             processed_report = {
                 "_id": str(report["_id"]),
