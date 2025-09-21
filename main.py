@@ -626,6 +626,73 @@ async def propagate_rw_sis(
     except Exception as e:
         raise HTTPException(500, detail=f"Error al procesar la propagación Real World SIS: {str(e)}")
 
+@app.get("/api/reports")
+async def get_reports():
+    """
+    Obtiene todos los reportes de propagación almacenados en MongoDB.
+    """
+    try:
+        # Obtener todos los documentos de propagación
+        reports = list(collection.find({}, {"_id": 1, "propagation_name": 1, "method": 1, "seed_user": 1, "policy": 1, "alcance_final": 1, "t_pico": 1, "timestamp": 1}))
+        
+        # Procesar los datos para el frontend
+        processed_reports = []
+        for report in reports:
+            # Determinar el tipo de red basado en el método
+            network_type = "unknown"
+            propagation_method = "unknown"
+            
+            if "ba-" in report.get("method", ""):
+                network_type = "barabasi-albert"
+            elif "hk-" in report.get("method", ""):
+                network_type = "holme-kim"
+            elif "rw-" in report.get("method", ""):
+                network_type = "real-world"
+            elif report.get("method") == "rip-dsn":
+                network_type = "barabasi-albert"  # RIP-DSN se usa principalmente con BA
+            elif report.get("method") in ["ema", "sma"]:
+                network_type = "barabasi-albert"  # Métodos emocionales se usan principalmente con BA
+            
+            # Determinar el método de propagación
+            method = report.get("method", "")
+            if "sir" in method:
+                propagation_method = "SIR"
+            elif "sis" in method:
+                propagation_method = "SIS"
+            elif method == "rip-dsn":
+                propagation_method = "RIP-DNS"
+            elif method in ["ema", "sma"]:
+                propagation_method = "RIP-DNS"  # Métodos emocionales
+            
+            processed_report = {
+                "_id": str(report["_id"]),
+                "propagationName": report.get("propagation_name", "Sin nombre"),
+                "networkType": network_type,
+                "propagationMethod": propagation_method,
+                "user": report.get("seed_user", "N/A"),
+                "policy": report.get("policy", "N/A"),
+                "finalReach": report.get("alcance_final", "N/A"),
+                "peakTime": report.get("t_pico", "N/A"),
+                "createdAt": report.get("timestamp", datetime.utcnow()).isoformat()
+            }
+            processed_reports.append(processed_report)
+        
+        # Ordenar por fecha de creación (más recientes primero)
+        processed_reports.sort(key=lambda x: x["createdAt"], reverse=True)
+        
+        return processed_reports
+        
+    except Exception as e:
+        print(f"Error fetching reports from MongoDB: {str(e)}")
+        raise HTTPException(500, detail=f"Error al obtener los reportes: {str(e)}")
+
+@app.get("/api/test")
+async def test_endpoint():
+    """
+    Endpoint de prueba para verificar conectividad.
+    """
+    return {"message": "Backend funcionando correctamente", "status": "ok"}
+
 @app.get("/health")
 async def health():
     """
