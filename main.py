@@ -662,8 +662,29 @@ async def get_reports():
     Obtiene todos los reportes de propagación almacenados en MongoDB.
     """
     try:
-        # Obtener todos los documentos de propagación
-        reports = list(collection.find({}, {"_id": 1, "propagation_name": 1, "method": 1, "tipo_red": 1, "metodo": 1, "seed_user": 1, "policy": 1, "alcance_final": 1, "t_pico": 1, "timestamp": 1}))
+        # Obtener todos los documentos de propagación con todos los campos necesarios
+        reports = list(collection.find({}, {
+            "_id": 1, 
+            "propagation_name": 1, 
+            "method": 1, 
+            "tipo_red": 1, 
+            "metodo": 1, 
+            "seed_user": 1, 
+            "policy": 1, 
+            "alcance_final": 1, 
+            "t_pico": 1, 
+            "timestamp": 1,
+            "beta": 1,
+            "gamma": 1,
+            "thresholds": 1,
+            "pct_modificar": 1,
+            "pct_reenviar": 1,
+            "pct_ignorar": 1,
+            "log": 1,
+            "k": 1,
+            "max_steps": 1,
+            "cluster_filtering": 1
+        }))
         
         # Procesar los datos para el frontend
         processed_reports = []
@@ -705,7 +726,26 @@ async def get_reports():
                 "policy": report.get("policy", "N/A"),
                 "finalReach": report.get("alcance_final", "N/A"),
                 "peakTime": report.get("t_pico", "N/A"),
-                "createdAt": report.get("timestamp", datetime.utcnow()).isoformat()
+                "createdAt": report.get("timestamp", datetime.utcnow()).isoformat(),
+                # Campos adicionales para el modal de detalle
+                "beta": report.get("beta"),
+                "gamma": report.get("gamma"),
+                "thresholds": report.get("thresholds"),
+                "method": report.get("method"),
+                "pct_modificar": report.get("pct_modificar"),
+                "pct_reenviar": report.get("pct_reenviar"),
+                "pct_ignorar": report.get("pct_ignorar"),
+                "log": report.get("log"),
+                "k": report.get("k"),
+                "max_steps": report.get("max_steps"),
+                "cluster_filtering": report.get("cluster_filtering"),
+                # Campos originales para compatibilidad
+                "propagation_name": report.get("propagation_name", "Sin nombre"),
+                "tipo_red": network_type,
+                "metodo": propagation_method,
+                "seed_user": report.get("seed_user", "N/A"),
+                "alcance_final": report.get("alcance_final", "N/A"),
+                "t_pico": report.get("t_pico", "N/A")
             }
             processed_reports.append(processed_report)
         
