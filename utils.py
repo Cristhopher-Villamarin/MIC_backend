@@ -115,27 +115,33 @@ def _decision(profile: str, sim_in: float, sim_out: float, thresholds: Dict[str,
     if profile == "High-Credibility Informant":
         return (
             "reenviar"
-            if (sim_in > forward_threshold and sim_out > 0.7)
+            if (sim_in > forward_threshold and sim_out > forward_threshold)
             else "modificar"
-            if sim_in > modify_threshold
+            if (sim_in > modify_threshold and sim_out > modify_threshold)
             else "ignorar"
         )
     if profile == "Emotionally-Driven Amplifier":
-        return "reenviar" if sim_in > forward_threshold else "modificar" if sim_in > modify_threshold else "ignorar"
+        return (
+            "reenviar"
+            if (sim_in > forward_threshold and sim_out > forward_threshold)
+            else "modificar"
+            if (sim_in > modify_threshold and sim_out > modify_threshold)
+            else "ignorar"
+        )
     if profile == "Mobilisation-Oriented Catalyst":
         return (
             "reenviar"
-            if sim_in > forward_threshold
+            if (sim_in > forward_threshold and sim_out > forward_threshold)
             else "modificar"
-            if sim_in > modify_threshold
+            if (sim_in > modify_threshold and sim_out > modify_threshold)
             else "ignorar"
         )
     if profile == "Emotionally Exposed Participant":
-        return (
+      return (
             "reenviar"
-            if sim_in > forward_threshold
+            if (sim_in > forward_threshold and sim_out > forward_threshold)
             else "modificar"
-            if sim_in > modify_threshold
+            if (sim_in > modify_threshold and sim_out > modify_threshold)
             else "ignorar"
         )
     raise ValueError(f"Perfil desconocido: {profile!r}")
@@ -375,3 +381,646 @@ class SimplePropagationEngine:
                         agenda.append((t + 1, receiver, follower))
 
         return LOG
+
+# ─────────────────────── MOTORES DE PROPAGACIÓN SIR Y SIS ─────────────
+class SIRPropagationEngine:
+    def __init__(self) -> None:
+        self.graph: nx.DiGraph | None = None
+        self.nodes: set = set()
+
+    def build(
+        self,
+        links_df: pd.DataFrame,
+        nodes_df: pd.DataFrame,
+        network_id: int | None = None,
+    ) -> None:
+        if network_id is not None and "network_id" in links_df.columns:
+            links_df = links_df.query("network_id == @network_id")
+        if network_id is not None and "network_id" in nodes_df.columns:
+            nodes_df = nodes_df.query("network_id == @network_id")
+
+        self.graph = nx.from_pandas_edgelist(
+            links_df, source="source", target="target", create_using=nx.DiGraph
+        )
+        self.nodes = set(nodes_df["node"].astype(str))
+
+    def propagate(
+        self, seed_user: str, beta: float, gamma: float, max_steps: int = 10
+    ) -> List[Dict[str, Any]]:
+        if self.graph is None:
+            raise RuntimeError("Primero llama a build()")
+        if seed_user not in self.nodes:
+            raise ValueError(f"Usuario inicial {seed_user} no encontrado en la red")
+
+        # Inicializar estados de nodos
+        node_states = {node: 'susceptible' for node in self.nodes}
+        node_states[seed_user] = 'infected'
+
+        # Variables de simulación
+        propagation_log = []
+        current_infected = [seed_user]
+        time_step = 0
+
+        # Simulación de propagación SIR
+        while current_infected and time_step < max_steps:
+            new_infected = []
+
+            # Fase 1: Propagación de infección a vecinos susceptibles
+            for infected_id in current_infected:
+                # Obtener vecinos susceptibles (predecesores en el grafo dirigido)
+                susceptible_neighbors = [
+                    neighbor for neighbor in self.graph.predecessors(infected_id)
+                    if neighbor in self.nodes and node_states[neighbor] == 'susceptible'
+                ]
+
+                for neighbor in susceptible_neighbors:
+                    if np.random.random() < beta:
+                        # Infectar nodo susceptible
+                        node_states[neighbor] = 'infected'
+                        new_infected.append(neighbor)
+                        
+                        # Registrar evento de infección
+                        propagation_log.append({
+                            "t": time_step,
+                            "sender": infected_id,
+                            "receiver": neighbor,
+                            "action": "infect",
+                            "state": "infected"
+                        })
+
+            # Fase 2: Verificar recuperación de infectados
+            recovered_this_step = []
+            for infected_id in current_infected:
+                if np.random.random() < gamma:
+                    node_states[infected_id] = 'recovered'
+                    recovered_this_step.append(infected_id)
+                    
+                    # Registrar evento de recuperación
+                    propagation_log.append({
+                        "t": time_step,
+                        "sender": infected_id,
+                        "receiver": infected_id,
+                        "action": "recover",
+                        "state": "recovered"
+                    })
+
+            # Actualizar para el siguiente paso de tiempo
+            current_infected = [node for node in current_infected + new_infected 
+                              if node not in recovered_this_step]
+            time_step += 1
+
+        return propagation_log
+
+class SISPropagationEngine:
+    def __init__(self) -> None:
+        self.graph: nx.DiGraph | None = None
+        self.nodes: set = set()
+
+    def build(
+        self,
+        links_df: pd.DataFrame,
+        nodes_df: pd.DataFrame,
+        network_id: int | None = None,
+    ) -> None:
+        if network_id is not None and "network_id" in links_df.columns:
+            links_df = links_df.query("network_id == @network_id")
+        if network_id is not None and "network_id" in nodes_df.columns:
+            nodes_df = nodes_df.query("network_id == @network_id")
+
+        self.graph = nx.from_pandas_edgelist(
+            links_df, source="source", target="target", create_using=nx.DiGraph
+        )
+        self.nodes = set(nodes_df["node"].astype(str))
+
+    def propagate(
+        self, seed_user: str, beta: float, gamma: float, max_steps: int = 10
+    ) -> List[Dict[str, Any]]:
+        if self.graph is None:
+            raise RuntimeError("Primero llama a build()")
+        if seed_user not in self.nodes:
+            raise ValueError(f"Usuario inicial {seed_user} no encontrado en la red")
+
+        # Inicializar estados de nodos
+        node_states = {node: 'susceptible' for node in self.nodes}
+        node_states[seed_user] = 'infected'
+
+        # Variables de simulación
+        propagation_log = []
+        current_infected = [seed_user]
+        time_step = 0
+
+        # Simulación de propagación SIS
+        while current_infected and time_step < max_steps:
+            new_infected = []
+
+            # Fase 1: Propagación de infección a vecinos susceptibles
+            for infected_id in current_infected:
+                # Obtener vecinos susceptibles (predecesores en el grafo dirigido)
+                susceptible_neighbors = [
+                    neighbor for neighbor in self.graph.predecessors(infected_id)
+                    if neighbor in self.nodes and node_states[neighbor] == 'susceptible'
+                ]
+
+                for neighbor in susceptible_neighbors:
+                    if np.random.random() < beta:
+                        # Infectar nodo susceptible
+                        node_states[neighbor] = 'infected'
+                        new_infected.append(neighbor)
+                        
+                        # Registrar evento de infección
+                        propagation_log.append({
+                            "t": time_step,
+                            "sender": infected_id,
+                            "receiver": neighbor,
+                            "action": "infect",
+                            "state": "infected"
+                        })
+
+            # Fase 2: Verificar recuperación de infectados (vuelven a susceptibles)
+            recovered_this_step = []
+            for infected_id in current_infected:
+                if np.random.random() < gamma:
+                    node_states[infected_id] = 'susceptible'
+                    recovered_this_step.append(infected_id)
+                    
+                    # Registrar evento de recuperación
+                    propagation_log.append({
+                        "t": time_step,
+                        "sender": infected_id,
+                        "receiver": infected_id,
+                        "action": "recover",
+                        "state": "susceptible"
+                    })
+
+            # Actualizar para el siguiente paso de tiempo
+            current_infected = [node for node in current_infected + new_infected 
+                              if node not in recovered_this_step]
+            time_step += 1
+
+        return propagation_log
+
+class RWSIRPropagationEngine:
+    def __init__(self) -> None:
+        self.graph: nx.DiGraph | None = None
+        self.nodes: set = set()
+
+    def build(
+        self,
+        links_df: pd.DataFrame,
+        nodes_df: pd.DataFrame,
+        network_id: int | None = None,
+    ) -> None:
+        if network_id is not None and "network_id" in links_df.columns:
+            links_df = links_df.query("network_id == @network_id")
+        if network_id is not None and "network_id" in nodes_df.columns:
+            nodes_df = nodes_df.query("network_id == @network_id")
+
+        self.graph = nx.from_pandas_edgelist(
+            links_df, source="source", target="target", create_using=nx.DiGraph
+        )
+        self.nodes = set(nodes_df["node"].astype(str))
+
+    def propagate(
+        self, seed_user: str, beta: float, gamma: float, max_steps: int = 10
+    ) -> List[Dict[str, Any]]:
+        if self.graph is None:
+            raise RuntimeError("Primero llama a build()")
+        if seed_user not in self.nodes:
+            raise ValueError(f"Usuario inicial {seed_user} no encontrado en la red")
+
+        # Inicializar estados de nodos
+        node_states = {node: 'susceptible' for node in self.nodes}
+        node_states[seed_user] = 'infected'
+
+        # Variables de simulación
+        propagation_log = []
+        current_infected = [seed_user]
+        time_step = 0
+
+        # Simulación de propagación SIR en red del mundo real
+        while current_infected and time_step < max_steps:
+            new_infected = []
+
+            # Fase 1: Propagación de infección a vecinos susceptibles
+            for infected_id in current_infected:
+                # Obtener vecinos susceptibles (predecesores en el grafo dirigido)
+                susceptible_neighbors = [
+                    neighbor for neighbor in self.graph.predecessors(infected_id)
+                    if neighbor in self.nodes and node_states[neighbor] == 'susceptible'
+                ]
+
+                for neighbor in susceptible_neighbors:
+                    if np.random.random() < beta:
+                        # Infectar nodo susceptible
+                        node_states[neighbor] = 'infected'
+                        new_infected.append(neighbor)
+                        
+                        # Registrar evento de infección
+                        propagation_log.append({
+                            "t": time_step,
+                            "sender": infected_id,
+                            "receiver": neighbor,
+                            "action": "infect",
+                            "state": "infected"
+                        })
+
+            # Fase 2: Verificar recuperación de infectados
+            recovered_this_step = []
+            for infected_id in current_infected:
+                if np.random.random() < gamma:
+                    node_states[infected_id] = 'recovered'
+                    recovered_this_step.append(infected_id)
+                    
+                    # Registrar evento de recuperación
+                    propagation_log.append({
+                        "t": time_step,
+                        "sender": infected_id,
+                        "receiver": infected_id,
+                        "action": "recover",
+                        "state": "recovered"
+                    })
+
+            # Actualizar para el siguiente paso de tiempo
+            current_infected = [node for node in current_infected + new_infected 
+                              if node not in recovered_this_step]
+            time_step += 1
+
+        return propagation_log
+
+class RWSISPropagationEngine:
+    def __init__(self) -> None:
+        self.graph: nx.DiGraph | None = None
+        self.nodes: set = set()
+
+    def build(
+        self,
+        links_df: pd.DataFrame,
+        nodes_df: pd.DataFrame,
+        network_id: int | None = None,
+    ) -> None:
+        if network_id is not None and "network_id" in links_df.columns:
+            links_df = links_df.query("network_id == @network_id")
+        if network_id is not None and "network_id" in nodes_df.columns:
+            nodes_df = nodes_df.query("network_id == @network_id")
+
+        self.graph = nx.from_pandas_edgelist(
+            links_df, source="source", target="target", create_using=nx.DiGraph
+        )
+        self.nodes = set(nodes_df["node"].astype(str))
+
+    def propagate(
+        self, seed_user: str, beta: float, gamma: float, max_steps: int = 10
+    ) -> List[Dict[str, Any]]:
+        if self.graph is None:
+            raise RuntimeError("Primero llama a build()")
+        if seed_user not in self.nodes:
+            raise ValueError(f"Usuario inicial {seed_user} no encontrado en la red")
+
+        # Inicializar estados de nodos
+        node_states = {node: 'susceptible' for node in self.nodes}
+        node_states[seed_user] = 'infected'
+
+        # Variables de simulación
+        propagation_log = []
+        current_infected = [seed_user]
+        time_step = 0
+
+        # Simulación de propagación SIS en red del mundo real
+        while current_infected and time_step < max_steps:
+            new_infected = []
+
+            # Fase 1: Propagación de infección a vecinos susceptibles
+            for infected_id in current_infected:
+                # Obtener vecinos susceptibles (predecesores en el grafo dirigido)
+                susceptible_neighbors = [
+                    neighbor for neighbor in self.graph.predecessors(infected_id)
+                    if neighbor in self.nodes and node_states[neighbor] == 'susceptible'
+                ]
+
+                for neighbor in susceptible_neighbors:
+                    if np.random.random() < beta:
+                        # Infectar nodo susceptible
+                        node_states[neighbor] = 'infected'
+                        new_infected.append(neighbor)
+                        
+                        # Registrar evento de infección
+                        propagation_log.append({
+                            "t": time_step,
+                            "sender": infected_id,
+                            "receiver": neighbor,
+                            "action": "infect",
+                            "state": "infected"
+                        })
+
+            # Fase 2: Verificar recuperación de infectados (vuelven a susceptibles)
+            recovered_this_step = []
+            for infected_id in current_infected:
+                if np.random.random() < gamma:
+                    node_states[infected_id] = 'susceptible'
+                    recovered_this_step.append(infected_id)
+                    
+                    # Registrar evento de recuperación
+                    propagation_log.append({
+                        "t": time_step,
+                        "sender": infected_id,
+                        "receiver": infected_id,
+                        "action": "recover",
+                        "state": "susceptible"
+                    })
+
+            # Actualizar para el siguiente paso de tiempo
+            current_infected = [node for node in current_infected + new_infected 
+                              if node not in recovered_this_step]
+            time_step += 1
+
+        return propagation_log
+
+def calculate_alcance_final(propagation_log: List[Dict[str, Any]]) -> int:
+    """
+    Calcula el alcance final de una propagación contando el número de nodos únicos
+    que participaron en la propagación (infectados, recuperados, o que recibieron mensajes).
+    
+    Args:
+        propagation_log: Lista de eventos de propagación
+        
+    Returns:
+        Número de nodos únicos que participaron en la propagación
+    """
+    unique_nodes = set()
+    
+    for event in propagation_log:
+        # Agregar nodos que enviaron mensajes
+        if 'sender' in event and event['sender'] is not None:
+            unique_nodes.add(event['sender'])
+        
+        # Agregar nodos que recibieron mensajes
+        if 'receiver' in event:
+            unique_nodes.add(event['receiver'])
+        
+        # Agregar nodos que publicaron mensajes
+        if 'publisher' in event:
+            unique_nodes.add(event['publisher'])
+    
+    return len(unique_nodes)
+
+def calculate_t_pico(propagation_log: List[Dict[str, Any]], method: str = "sir") -> Dict[int, int]:
+    """
+    Calcula t_pico: el número de nodos infectados/activos en cada paso de tiempo.
+    
+    Para modelos SIR/SIS: cuenta nodos infectados en cada paso t
+    Para RIP-DSN: cuenta nodos que reenvían o modifican en cada paso t
+    
+    Args:
+        propagation_log: Lista de eventos de propagación
+        method: Tipo de propagación ("sir", "sis", "rip-dsn", "emotion")
+        
+    Returns:
+        Diccionario con {paso_tiempo: numero_nodos_activos}
+    """
+    print(f"\n=== CALCULANDO T_PICO PARA MÉTODO: {method} ===")
+    print(f"Total de eventos en el log: {len(propagation_log)}")
+    
+    t_pico = {}
+    
+    if method in ["sir", "sis"]:
+        print(f"\n--- Procesando modelo {method.upper()} ---")
+        # Para SIR/SIS: contar nodos infectados en cada paso de tiempo
+        infected_by_time = {}
+        
+        for i, event in enumerate(propagation_log):
+            t = event.get('t', 0)
+            action = event.get('action', '')
+            receiver = event.get('receiver', '')
+            sender = event.get('sender', '')
+            
+            print(f"Evento {i+1}: t={t}, action='{action}', sender='{sender}', receiver='{receiver}'")
+            
+            if action == 'infect':
+                # Nuevo nodo infectado
+                if t not in infected_by_time:
+                    infected_by_time[t] = set()
+                    print(f"  → Creando conjunto para tiempo t={t}")
+                infected_by_time[t].add(receiver)
+                print(f"  → Agregando {receiver} a infectados en t={t}")
+                print(f"  → Infectados en t={t}: {list(infected_by_time[t])}")
+            elif action == 'recover':
+                # Nodo recuperado (solo para SIR, en SIS vuelve a susceptible)
+                print(f"  → {receiver} se recupera en t={t} (no se cuenta como infectado)")
+                if method == "sir":
+                    # En SIR, los recuperados no se cuentan como infectados
+                    pass
+                else:  # SIS
+                    # En SIS, los recuperados vuelven a susceptibles, no se cuentan
+                    pass
+            else:
+                print(f"  → Acción '{action}' ignorada para conteo de infectados")
+        
+        print(f"\n--- Resumen de infectados por tiempo ---")
+        # Calcular el número total de infectados en cada paso de tiempo
+        for t in sorted(infected_by_time.keys()):
+            count = len(infected_by_time[t])
+            t_pico[str(t)] = count
+            print(f"Tiempo t={t}: {count} nodos infectados {list(infected_by_time[t])}")
+            
+    elif method in ["rip-dsn", "emotion"]:
+        print(f"\n--- Procesando modelo {method.upper()} ---")
+        # Para RIP-DSN y propagación emocional: contar nodos que reenvían o modifican
+        active_by_time = {}
+        
+        for i, event in enumerate(propagation_log):
+            t = event.get('t', 0)
+            action = event.get('action', '')
+            receiver = event.get('receiver', '')
+            sender = event.get('sender', '')
+            publisher = event.get('publisher', '')
+            
+            print(f"Evento {i+1}: t={t}, action='{action}', sender='{sender}', receiver='{receiver}', publisher='{publisher}'")
+            
+            if action in ['reenviar', 'modificar', 'forward']:
+                # Nodo que reenvía o modifica
+                if t not in active_by_time:
+                    active_by_time[t] = set()
+                    print(f"  → Creando conjunto para tiempo t={t}")
+                active_by_time[t].add(sender)
+                print(f"  → Agregando {sender} a activos en t={t} (acción: {action})")
+                print(f"  → Activos en t={t}: {list(active_by_time[t])}")
+            elif action == 'publish':
+                # Nodo que publica inicialmente
+                if t not in active_by_time:
+                    active_by_time[t] = set()
+                    print(f"  → Creando conjunto para tiempo t={t}")
+                publisher_node = publisher or receiver
+                active_by_time[t].add(publisher_node)
+                print(f"  → Agregando {publisher_node} a activos en t={t} (publicación inicial)")
+                print(f"  → Activos en t={t}: {list(active_by_time[t])}")
+            else:
+                print(f"  → Acción '{action}' ignorada para conteo de activos")
+        
+        print(f"\n--- Resumen de activos por tiempo ---")
+        # Calcular el número total de nodos activos en cada paso de tiempo
+        for t in sorted(active_by_time.keys()):
+            count = len(active_by_time[t])
+            t_pico[str(t)] = count
+            print(f"Tiempo t={t}: {count} nodos activos {list(active_by_time[t])}")
+    
+    print(f"\n=== RESULTADO FINAL T_PICO ===")
+    for t_str in sorted(t_pico.keys(), key=int):
+        print(f"t_pico['{t_str}'] = {t_pico[t_str]}")
+    print("=" * 50)
+    
+    return t_pico
+
+def calculate_pct_modificar(propagation_log: List[Dict[str, Any]], total_nodes: int) -> float:
+    """
+    Calcula la proporción de nodos que modificaron al menos un mensaje durante la propagación.
+    
+    Args:
+        propagation_log: Lista de eventos de propagación
+        total_nodes: Número total de nodos en la red
+        
+    Returns:
+        Proporción de nodos que modificaron mensajes (0.0 a 1.0)
+    """
+    print(f"\n=== CALCULANDO PCT_MODIFICAR ===")
+    print(f"Total de nodos en la red: {total_nodes}")
+    print(f"Total de eventos en el log: {len(propagation_log)}")
+    print()
+    
+    nodes_that_modified = set()
+    
+    print("--- ANÁLISIS DE EVENTOS ---")
+    for i, event in enumerate(propagation_log):
+        action = event.get('action', '')
+        receiver = event.get('receiver', '')
+        sender = event.get('sender', '')
+        publisher = event.get('publisher', '')
+        t = event.get('t', 0)
+        
+        print(f"Evento {i+1}: t={t}, sender='{sender}', receiver='{receiver}', publisher='{publisher}', action='{action}'")
+        
+        if action == 'modificar':
+            nodes_that_modified.add(receiver)
+            print(f"  → NODO {receiver} MODIFICÓ mensaje")
+        else:
+            print(f"  → Acción '{action}' - no es modificar")
+    
+    print(f"\n--- RESULTADO PCT_MODIFICAR ---")
+    print(f"Nodos que modificaron: {sorted(list(nodes_that_modified))}")
+    print(f"Cantidad de nodos que modificaron: {len(nodes_that_modified)}")
+    
+    if total_nodes == 0:
+        print("Total de nodos es 0, retornando 0.0")
+        return 0.0
+    
+    percentage = len(nodes_that_modified) / total_nodes
+    result = round(percentage, 4)
+    print(f"Proporción: ({len(nodes_that_modified)} / {total_nodes}) = {result}")
+    print("=" * 50)
+    
+    return result
+
+def calculate_pct_reenviar(propagation_log: List[Dict[str, Any]], total_nodes: int) -> float:
+    """
+    Calcula la proporción de nodos que reenviaron al menos un mensaje durante la propagación.
+    
+    Args:
+        propagation_log: Lista de eventos de propagación
+        total_nodes: Número total de nodos en la red
+        
+    Returns:
+        Proporción de nodos que reenviaron mensajes (0.0 a 1.0)
+    """
+    print(f"\n=== CALCULANDO PCT_REENVIAR ===")
+    print(f"Total de nodos en la red: {total_nodes}")
+    print(f"Total de eventos en el log: {len(propagation_log)}")
+    print()
+    
+    nodes_that_forwarded = set()
+    
+    print("--- ANÁLISIS DE EVENTOS ---")
+    for i, event in enumerate(propagation_log):
+        action = event.get('action', '')
+        receiver = event.get('receiver', '')
+        sender = event.get('sender', '')
+        publisher = event.get('publisher', '')
+        t = event.get('t', 0)
+        
+        print(f"Evento {i+1}: t={t}, sender='{sender}', receiver='{receiver}', publisher='{publisher}', action='{action}'")
+        
+        if action in ['reenviar', 'forward']:
+            nodes_that_forwarded.add(receiver)
+            print(f"  → NODO {receiver} REENVIÓ mensaje (acción: {action})")
+        else:
+            print(f"  → Acción '{action}' - no es reenvío")
+    
+    print(f"\n--- RESULTADO PCT_REENVIAR ---")
+    print(f"Nodos que reenviaron: {sorted(list(nodes_that_forwarded))}")
+    print(f"Cantidad de nodos que reenviaron: {len(nodes_that_forwarded)}")
+    
+    if total_nodes == 0:
+        print("Total de nodos es 0, retornando 0.0")
+        return 0.0
+    
+    percentage = len(nodes_that_forwarded) / total_nodes
+    result = round(percentage, 4)
+    print(f"Proporción: ({len(nodes_that_forwarded)} / {total_nodes}) = {result}")
+    print("=" * 50)
+    
+    return result
+
+def calculate_pct_ignorar(propagation_log: List[Dict[str, Any]], total_nodes: int, pct_reenviar: float, pct_modificar: float) -> float:
+    """
+    Calcula el porcentaje de nodos que ignoraron mensajes usando la fórmula: 1 - (reenviar + modificar).
+    
+    Args:
+        propagation_log: Lista de eventos de propagación (no se usa en la nueva fórmula)
+        total_nodes: Número total de nodos en la red (no se usa en la nueva fórmula)
+        pct_reenviar: Proporción de nodos que reenviaron (0.0 a 1.0)
+        pct_modificar: Proporción de nodos que modificaron (0.0 a 1.0)
+        
+    Returns:
+        Proporción de nodos que ignoraron mensajes (0.0 a 1.0)
+    """
+    print(f"\n=== CALCULANDO PCT_IGNORAR (NUEVA FÓRMULA) ===")
+    print(f"Proporción de reenvío: {pct_reenviar}")
+    print(f"Proporción de modificación: {pct_modificar}")
+    
+    # Nueva fórmula: 1 - (reenviar + modificar)
+    pct_ignorar = 1.0 - (pct_reenviar + pct_modificar)
+    
+    # Asegurar que el resultado esté en el rango [0, 1]
+    pct_ignorar = max(0.0, min(1.0, pct_ignorar))
+    
+    result = round(pct_ignorar, 4)
+    print(f"Fórmula: 1 - ({pct_reenviar} + {pct_modificar}) = {result}")
+    print("=" * 50)
+    
+    return result
+
+def calculate_t_max(t_pico: Dict[str, int]) -> int:
+    """
+    Calcula t_max: el valor máximo entre todos los valores de t_pico.
+    
+    Args:
+        t_pico: Diccionario con {paso_tiempo: numero_nodos_activos}
+        
+    Returns:
+        Valor máximo entre todos los valores de t_pico
+    """
+    print(f"\n=== CALCULANDO T_MAX ===")
+    print(f"t_pico recibido: {t_pico}")
+    
+    if not t_pico:
+        print("t_pico está vacío, retornando 0")
+        return 0
+    
+    # Obtener todos los valores de t_pico
+    values = list(t_pico.values())
+    print(f"Valores en t_pico: {values}")
+    
+    # Encontrar el valor máximo
+    t_max = max(values)
+    print(f"Valor máximo encontrado: {t_max}")
+    print("=" * 50)
+    
+    return t_max
