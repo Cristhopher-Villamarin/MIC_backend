@@ -872,14 +872,14 @@ def calculate_t_pico(propagation_log: List[Dict[str, Any]], method: str = "sir")
 
 def calculate_pct_modificar(propagation_log: List[Dict[str, Any]], total_nodes: int) -> float:
     """
-    Calcula el porcentaje de nodos que modificaron al menos un mensaje durante la propagación.
+    Calcula la proporción de nodos que modificaron al menos un mensaje durante la propagación.
     
     Args:
         propagation_log: Lista de eventos de propagación
         total_nodes: Número total de nodos en la red
         
     Returns:
-        Porcentaje de nodos que modificaron mensajes (0.0 a 100.0)
+        Proporción de nodos que modificaron mensajes (0.0 a 1.0)
     """
     print(f"\n=== CALCULANDO PCT_MODIFICAR ===")
     print(f"Total de nodos en la red: {total_nodes}")
@@ -909,26 +909,26 @@ def calculate_pct_modificar(propagation_log: List[Dict[str, Any]], total_nodes: 
     print(f"Cantidad de nodos que modificaron: {len(nodes_that_modified)}")
     
     if total_nodes == 0:
-        print("Total de nodos es 0, retornando 0%")
+        print("Total de nodos es 0, retornando 0.0")
         return 0.0
     
-    percentage = (len(nodes_that_modified) / total_nodes) * 100
-    result = round(percentage, 2)
-    print(f"Porcentaje: ({len(nodes_that_modified)} / {total_nodes}) * 100 = {result}%")
+    percentage = len(nodes_that_modified) / total_nodes
+    result = round(percentage, 4)
+    print(f"Proporción: ({len(nodes_that_modified)} / {total_nodes}) = {result}")
     print("=" * 50)
     
     return result
 
 def calculate_pct_reenviar(propagation_log: List[Dict[str, Any]], total_nodes: int) -> float:
     """
-    Calcula el porcentaje de nodos que reenviaron al menos un mensaje durante la propagación.
+    Calcula la proporción de nodos que reenviaron al menos un mensaje durante la propagación.
     
     Args:
         propagation_log: Lista de eventos de propagación
         total_nodes: Número total de nodos en la red
         
     Returns:
-        Porcentaje de nodos que reenviaron mensajes (0.0 a 100.0)
+        Proporción de nodos que reenviaron mensajes (0.0 a 1.0)
     """
     print(f"\n=== CALCULANDO PCT_REENVIAR ===")
     print(f"Total de nodos en la red: {total_nodes}")
@@ -958,62 +958,69 @@ def calculate_pct_reenviar(propagation_log: List[Dict[str, Any]], total_nodes: i
     print(f"Cantidad de nodos que reenviaron: {len(nodes_that_forwarded)}")
     
     if total_nodes == 0:
-        print("Total de nodos es 0, retornando 0%")
+        print("Total de nodos es 0, retornando 0.0")
         return 0.0
     
-    percentage = (len(nodes_that_forwarded) / total_nodes) * 100
-    result = round(percentage, 2)
-    print(f"Porcentaje: ({len(nodes_that_forwarded)} / {total_nodes}) * 100 = {result}%")
+    percentage = len(nodes_that_forwarded) / total_nodes
+    result = round(percentage, 4)
+    print(f"Proporción: ({len(nodes_that_forwarded)} / {total_nodes}) = {result}")
     print("=" * 50)
     
     return result
 
-def calculate_pct_ignorar(propagation_log: List[Dict[str, Any]], total_nodes: int) -> float:
+def calculate_pct_ignorar(propagation_log: List[Dict[str, Any]], total_nodes: int, pct_reenviar: float, pct_modificar: float) -> float:
     """
-    Calcula el porcentaje de nodos que ignoraron al menos un mensaje durante la propagación.
-    Un nodo ignora un mensaje cuando tiene la acción "ignorar" en el log.
+    Calcula el porcentaje de nodos que ignoraron mensajes usando la fórmula: 1 - (reenviar + modificar).
     
     Args:
-        propagation_log: Lista de eventos de propagación
-        total_nodes: Número total de nodos en la red
+        propagation_log: Lista de eventos de propagación (no se usa en la nueva fórmula)
+        total_nodes: Número total de nodos en la red (no se usa en la nueva fórmula)
+        pct_reenviar: Proporción de nodos que reenviaron (0.0 a 1.0)
+        pct_modificar: Proporción de nodos que modificaron (0.0 a 1.0)
         
     Returns:
-        Porcentaje de nodos que ignoraron mensajes (0.0 a 100.0)
+        Proporción de nodos que ignoraron mensajes (0.0 a 1.0)
     """
-    print(f"\n=== CALCULANDO PCT_IGNORAR ===")
-    print(f"Total de nodos en la red: {total_nodes}")
-    print(f"Total de eventos en el log: {len(propagation_log)}")
-    print()
+    print(f"\n=== CALCULANDO PCT_IGNORAR (NUEVA FÓRMULA) ===")
+    print(f"Proporción de reenvío: {pct_reenviar}")
+    print(f"Proporción de modificación: {pct_modificar}")
     
-    nodes_that_ignored = set()
+    # Nueva fórmula: 1 - (reenviar + modificar)
+    pct_ignorar = 1.0 - (pct_reenviar + pct_modificar)
     
-    print("--- ANÁLISIS DE EVENTOS ---")
-    for i, event in enumerate(propagation_log):
-        action = event.get('action', '')
-        receiver = event.get('receiver', '')
-        sender = event.get('sender', '')
-        publisher = event.get('publisher', '')
-        t = event.get('t', 0)
-        
-        print(f"Evento {i+1}: t={t}, sender='{sender}', receiver='{receiver}', publisher='{publisher}', action='{action}'")
-        
-        if action == 'ignorar':
-            nodes_that_ignored.add(receiver)
-            print(f"  → NODO {receiver} IGNORÓ mensaje")
-        else:
-            print(f"  → Acción '{action}' - no es ignorar")
+    # Asegurar que el resultado esté en el rango [0, 1]
+    pct_ignorar = max(0.0, min(1.0, pct_ignorar))
     
-    print(f"\n--- RESULTADO PCT_IGNORAR ---")
-    print(f"Nodos que ignoraron: {sorted(list(nodes_that_ignored))}")
-    print(f"Cantidad de nodos que ignoraron: {len(nodes_that_ignored)}")
-    
-    if total_nodes == 0:
-        print("Total de nodos es 0, retornando 0%")
-        return 0.0
-    
-    percentage = (len(nodes_that_ignored) / total_nodes) * 100
-    result = round(percentage, 2)
-    print(f"Porcentaje: ({len(nodes_that_ignored)} / {total_nodes}) * 100 = {result}%")
+    result = round(pct_ignorar, 4)
+    print(f"Fórmula: 1 - ({pct_reenviar} + {pct_modificar}) = {result}")
     print("=" * 50)
     
     return result
+
+def calculate_t_max(t_pico: Dict[str, int]) -> int:
+    """
+    Calcula t_max: el valor máximo entre todos los valores de t_pico.
+    
+    Args:
+        t_pico: Diccionario con {paso_tiempo: numero_nodos_activos}
+        
+    Returns:
+        Valor máximo entre todos los valores de t_pico
+    """
+    print(f"\n=== CALCULANDO T_MAX ===")
+    print(f"t_pico recibido: {t_pico}")
+    
+    if not t_pico:
+        print("t_pico está vacío, retornando 0")
+        return 0
+    
+    # Obtener todos los valores de t_pico
+    values = list(t_pico.values())
+    print(f"Valores en t_pico: {values}")
+    
+    # Encontrar el valor máximo
+    t_max = max(values)
+    print(f"Valor máximo encontrado: {t_max}")
+    print("=" * 50)
+    
+    return t_max

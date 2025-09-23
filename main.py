@@ -8,7 +8,7 @@ import json
 import numpy as np
 import tensorflow as tf
 from generate_vectors import generar_datos_sinteticos_cargado, cargar_modelo_y_escalador
-from utils import EmotionAnalyzer, PropagationEngine, SimplePropagationEngine, SIRPropagationEngine, SISPropagationEngine, RWSIRPropagationEngine, RWSISPropagationEngine, calculate_alcance_final, calculate_t_pico, calculate_pct_modificar, calculate_pct_reenviar, calculate_pct_ignorar
+from utils import EmotionAnalyzer, PropagationEngine, SimplePropagationEngine, SIRPropagationEngine, SISPropagationEngine, RWSIRPropagationEngine, RWSISPropagationEngine, calculate_alcance_final, calculate_t_pico, calculate_t_max, calculate_pct_modificar, calculate_pct_reenviar, calculate_pct_ignorar
 from pymongo import MongoClient
 from datetime import datetime
 import uuid
@@ -148,12 +148,13 @@ async def propagate(
             # Calcular alcance final y t_pico
             alcance_final = calculate_alcance_final(log)
             t_pico = calculate_t_pico(log, method="emotion")
+            t_max = calculate_t_max(t_pico)
             
             # Calcular nuevas métricas para RIP DSN
             total_nodes = len(engine.graph.nodes()) if engine.graph else 0
             pct_modificar = calculate_pct_modificar(log, total_nodes)
             pct_reenviar = calculate_pct_reenviar(log, total_nodes)
-            pct_ignorar = calculate_pct_ignorar(log, total_nodes)
+            pct_ignorar = calculate_pct_ignorar(log, total_nodes, pct_reenviar, pct_modificar)
             
             # Save propagation log to MongoDB
             propagation_id = str(uuid.uuid4())
@@ -172,6 +173,7 @@ async def propagate(
                 "cluster_filtering": cluster_filtering,
                 "alcance_final": alcance_final,
                 "t_pico": t_pico,
+                "t_max": t_max,
                 "pct_modificar": pct_modificar,
                 "pct_reenviar": pct_reenviar,
                 "pct_ignorar": pct_ignorar,
@@ -202,12 +204,13 @@ async def propagate(
             # Calcular alcance final y t_pico
             alcance_final = calculate_alcance_final(log)
             t_pico = calculate_t_pico(log, method="rip-dsn")
+            t_max = calculate_t_max(t_pico)
             
             # Calcular nuevas métricas para RIP DSN
             total_nodes = len(simple_engine.nodes) if simple_engine.nodes else 0
             pct_modificar = calculate_pct_modificar(log, total_nodes)
             pct_reenviar = calculate_pct_reenviar(log, total_nodes)
-            pct_ignorar = calculate_pct_ignorar(log, total_nodes)
+            pct_ignorar = calculate_pct_ignorar(log, total_nodes, pct_reenviar, pct_modificar)
             
             # Save RIP-DSN propagation log to MongoDB
             propagation_id = str(uuid.uuid4())
@@ -225,6 +228,7 @@ async def propagate(
                 "cluster_filtering": cluster_filtering,
                 "alcance_final": alcance_final,
                 "t_pico": t_pico,
+                "t_max": t_max,
                 "pct_modificar": pct_modificar,
                 "pct_reenviar": pct_reenviar,
                 "pct_ignorar": pct_ignorar,
@@ -296,6 +300,7 @@ async def propagate_ba_sir(
         # Calcular alcance final y t_pico
         alcance_final = calculate_alcance_final(log)
         t_pico = calculate_t_pico(log, method="sir")
+        t_max = calculate_t_max(t_pico)
         
         # Save SIR propagation log to MongoDB
         propagation_id = str(uuid.uuid4())
@@ -313,6 +318,7 @@ async def propagate_ba_sir(
             "max_steps": max_steps,
             "alcance_final": alcance_final,
             "t_pico": t_pico,
+            "t_max": t_max,
             "timestamp": datetime.utcnow(),
             "log": log
         }
@@ -361,6 +367,7 @@ async def propagate_ba_sis(
         # Calcular alcance final y t_pico
         alcance_final = calculate_alcance_final(log)
         t_pico = calculate_t_pico(log, method="sis")
+        t_max = calculate_t_max(t_pico)
         
         # Save SIS propagation log to MongoDB
         propagation_id = str(uuid.uuid4())
@@ -378,6 +385,7 @@ async def propagate_ba_sis(
             "max_steps": max_steps,
             "alcance_final": alcance_final,
             "t_pico": t_pico,
+            "t_max": t_max,
             "timestamp": datetime.utcnow(),
             "log": log
         }
@@ -426,6 +434,7 @@ async def propagate_hk_sir(
         # Calcular alcance final y t_pico
         alcance_final = calculate_alcance_final(log)
         t_pico = calculate_t_pico(log, method="sir")
+        t_max = calculate_t_max(t_pico)
         
         # Save Holme-Kim SIR propagation log to MongoDB
         propagation_id = str(uuid.uuid4())
@@ -443,6 +452,7 @@ async def propagate_hk_sir(
             "max_steps": max_steps,
             "alcance_final": alcance_final,
             "t_pico": t_pico,
+            "t_max": t_max,
             "timestamp": datetime.utcnow(),
             "log": log
         }
@@ -491,6 +501,7 @@ async def propagate_hk_sis(
         # Calcular alcance final y t_pico
         alcance_final = calculate_alcance_final(log)
         t_pico = calculate_t_pico(log, method="sis")
+        t_max = calculate_t_max(t_pico)
         
         # Save Holme-Kim SIS propagation log to MongoDB
         propagation_id = str(uuid.uuid4())
@@ -508,6 +519,7 @@ async def propagate_hk_sis(
             "max_steps": max_steps,
             "alcance_final": alcance_final,
             "t_pico": t_pico,
+            "t_max": t_max,
             "timestamp": datetime.utcnow(),
             "log": log
         }
@@ -556,6 +568,7 @@ async def propagate_rw_sir(
         # Calcular alcance final y t_pico
         alcance_final = calculate_alcance_final(log)
         t_pico = calculate_t_pico(log, method="sir")
+        t_max = calculate_t_max(t_pico)
         
         # Save Real World SIR propagation log to MongoDB
         propagation_id = str(uuid.uuid4())
@@ -573,6 +586,7 @@ async def propagate_rw_sir(
             "max_steps": max_steps,
             "alcance_final": alcance_final,
             "t_pico": t_pico,
+            "t_max": t_max,
             "timestamp": datetime.utcnow(),
             "log": log
         }
@@ -621,6 +635,7 @@ async def propagate_rw_sis(
         # Calcular alcance final y t_pico
         alcance_final = calculate_alcance_final(log)
         t_pico = calculate_t_pico(log, method="sis")
+        t_max = calculate_t_max(t_pico)
         
         # Save Real World SIS propagation log to MongoDB
         propagation_id = str(uuid.uuid4())
@@ -638,6 +653,7 @@ async def propagate_rw_sis(
             "max_steps": max_steps,
             "alcance_final": alcance_final,
             "t_pico": t_pico,
+            "t_max": t_max,
             "timestamp": datetime.utcnow(),
             "log": log
         }
@@ -673,6 +689,7 @@ async def get_reports():
             "policy": 1, 
             "alcance_final": 1, 
             "t_pico": 1, 
+            "t_max": 1,
             "timestamp": 1,
             "beta": 1,
             "gamma": 1,
@@ -726,6 +743,7 @@ async def get_reports():
                 "policy": report.get("policy", "N/A"),
                 "finalReach": report.get("alcance_final", "N/A"),
                 "peakTime": report.get("t_pico", "N/A"),
+                "maxPeakTime": report.get("t_max", "N/A"),
                 "createdAt": report.get("timestamp", datetime.utcnow()).isoformat(),
                 # Campos adicionales para el modal de detalle
                 "beta": report.get("beta"),
@@ -745,7 +763,8 @@ async def get_reports():
                 "metodo": propagation_method,
                 "seed_user": report.get("seed_user", "N/A"),
                 "alcance_final": report.get("alcance_final", "N/A"),
-                "t_pico": report.get("t_pico", "N/A")
+                "t_pico": report.get("t_pico", "N/A"),
+                "t_max": report.get("t_max", "N/A")
             }
             processed_reports.append(processed_report)
         
