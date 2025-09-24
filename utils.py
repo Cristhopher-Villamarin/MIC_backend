@@ -836,23 +836,17 @@ def calculate_t_pico(propagation_log: List[Dict[str, Any]], method: str = "sir")
             
             print(f"Evento {i+1}: t={t}, action='{action}', sender='{sender}', receiver='{receiver}', publisher='{publisher}'")
             
-            if action in ['reenviar', 'modificar', 'forward']:
-                # Nodo que reenvía o modifica
+            if action in ['reenviar', 'modificar', 'forward', 'ignorar']:
+                # Nodo que reenvía, modifica o ignora
                 if t not in active_by_time:
                     active_by_time[t] = set()
                     print(f"  → Creando conjunto para tiempo t={t}")
-                active_by_time[t].add(sender)
-                print(f"  → Agregando {sender} a activos en t={t} (acción: {action})")
+                active_by_time[t].add(receiver)
+                print(f"  → Agregando {receiver} a activos en t={t} (acción: {action})")
                 print(f"  → Activos en t={t}: {list(active_by_time[t])}")
             elif action == 'publish':
-                # Nodo que publica inicialmente
-                if t not in active_by_time:
-                    active_by_time[t] = set()
-                    print(f"  → Creando conjunto para tiempo t={t}")
-                publisher_node = publisher or receiver
-                active_by_time[t].add(publisher_node)
-                print(f"  → Agregando {publisher_node} a activos en t={t} (publicación inicial)")
-                print(f"  → Activos en t={t}: {list(active_by_time[t])}")
+                # Para t_pico, no contamos la publicación inicial, solo las acciones de respuesta
+                print(f"  → Acción 'publish' - no se cuenta para t_pico (solo acciones de respuesta)")
             else:
                 print(f"  → Acción '{action}' ignorada para conteo de activos")
         
