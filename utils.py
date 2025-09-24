@@ -240,7 +240,7 @@ class PropagationEngine:
         self.history[seed_user].append((self.state_in[seed_user].copy(), self.state_out[seed_user].copy()))
 
         # agenda: (t, sender, receiver, vector_enviado)
-        agenda = deque([(0, None, seed_user, vec_msg)])
+        agenda = deque([(1, None, seed_user, vec_msg)])
         LOG: List[Dict[str, Any]] = []
 
         while agenda:
@@ -338,7 +338,7 @@ class SimplePropagationEngine:
             raise ValueError(f"Usuario inicial {seed_user} no encontrado en la red")
 
         # agenda: (t, sender, receiver)
-        agenda = deque([(0, None, seed_user)])
+        agenda = deque([(1, None, seed_user)])
         LOG: List[Dict[str, Any]] = []
 
         # Usar un diccionario para rastrear el número de veces que un nodo recibe el mensaje
@@ -419,7 +419,7 @@ class SIRPropagationEngine:
         # Variables de simulación
         propagation_log = []
         current_infected = [seed_user]
-        time_step = 0
+        time_step = 1
 
         # Simulación de propagación SIR
         while current_infected and time_step < max_steps:
@@ -507,7 +507,7 @@ class SISPropagationEngine:
         # Variables de simulación
         propagation_log = []
         current_infected = [seed_user]
-        time_step = 0
+        time_step = 1
 
         # Simulación de propagación SIS
         while current_infected and time_step < max_steps:
@@ -595,7 +595,7 @@ class RWSIRPropagationEngine:
         # Variables de simulación
         propagation_log = []
         current_infected = [seed_user]
-        time_step = 0
+        time_step = 1
 
         # Simulación de propagación SIR en red del mundo real
         while current_infected and time_step < max_steps:
@@ -683,7 +683,7 @@ class RWSISPropagationEngine:
         # Variables de simulación
         propagation_log = []
         current_infected = [seed_user]
-        time_step = 0
+        time_step = 1
 
         # Simulación de propagación SIS en red del mundo real
         while current_infected and time_step < max_steps:
