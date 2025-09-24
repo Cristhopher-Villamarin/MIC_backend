@@ -991,6 +991,106 @@ def calculate_pct_ignorar(propagation_log: List[Dict[str, Any]], total_nodes: in
     
     return result
 
+def calculate_new_t(propagation_log: List[Dict[str, Any]], method: str = "rip-dsn") -> Dict[int, int]:
+    """
+    Calcula new_t: el número de nodos que participan por primera vez en cada paso de tiempo.
+    
+    A diferencia de t_pico, new_t no cuenta nodos que ya participaron en pasos anteriores.
+    
+    Args:
+        propagation_log: Lista de eventos de propagación
+        method: Tipo de propagación ("sir", "sis", "rip-dsn", "emotion")
+        
+    Returns:
+        Diccionario con {paso_tiempo: numero_nodos_nuevos}
+    """
+    print(f"\n=== CALCULANDO NEW_T PARA MÉTODO: {method} ===")
+    print(f"Total de eventos en el log: {len(propagation_log)}")
+    
+    new_t = {}
+    nodes_that_participated = set()  # Nodos que ya participaron en pasos anteriores
+    
+    if method in ["sir", "sis"]:
+        print(f"\n--- Procesando modelo {method.upper()} para new_t ---")
+        # Para SIR/SIS: contar nodos infectados por primera vez en cada paso de tiempo
+        new_infected_by_time = {}
+        
+        for i, event in enumerate(propagation_log):
+            t = event.get('t', 0)
+            action = event.get('action', '')
+            receiver = event.get('receiver', '')
+            sender = event.get('sender', '')
+            
+            print(f"Evento {i+1}: t={t}, action='{action}', sender='{sender}', receiver='{receiver}'")
+            
+            if action == 'infect':
+                # Solo contar si el nodo no había participado antes
+                if receiver not in nodes_that_participated:
+                    if t not in new_infected_by_time:
+                        new_infected_by_time[t] = set()
+                        print(f"  → Creando conjunto para tiempo t={t}")
+                    new_infected_by_time[t].add(receiver)
+                    nodes_that_participated.add(receiver)
+                    print(f"  → Agregando {receiver} a nuevos infectados en t={t} (primera participación)")
+                    print(f"  → Nuevos infectados en t={t}: {list(new_infected_by_time[t])}")
+                else:
+                    print(f"  → {receiver} ya participó antes, no se cuenta en new_t")
+            else:
+                print(f"  → Acción '{action}' ignorada para conteo de nuevos infectados")
+        
+        print(f"\n--- Resumen de nuevos infectados por tiempo ---")
+        # Calcular el número total de nuevos infectados en cada paso de tiempo
+        for t in sorted(new_infected_by_time.keys()):
+            count = len(new_infected_by_time[t])
+            new_t[str(t)] = count
+            print(f"Tiempo t={t}: {count} nuevos infectados {list(new_infected_by_time[t])}")
+            
+    elif method in ["rip-dsn", "emotion"]:
+        print(f"\n--- Procesando modelo {method.upper()} para new_t ---")
+        # Para RIP-DSN y propagación emocional: contar nodos que participan por primera vez
+        new_active_by_time = {}
+        
+        for i, event in enumerate(propagation_log):
+            t = event.get('t', 0)
+            action = event.get('action', '')
+            receiver = event.get('receiver', '')
+            sender = event.get('sender', '')
+            publisher = event.get('publisher', '')
+            
+            print(f"Evento {i+1}: t={t}, action='{action}', sender='{sender}', receiver='{receiver}', publisher='{publisher}'")
+            
+            if action in ['reenviar', 'modificar', 'forward', 'ignorar']:
+                # Solo contar si el nodo no había participado antes
+                if receiver not in nodes_that_participated:
+                    if t not in new_active_by_time:
+                        new_active_by_time[t] = set()
+                        print(f"  → Creando conjunto para tiempo t={t}")
+                    new_active_by_time[t].add(receiver)
+                    nodes_that_participated.add(receiver)
+                    print(f"  → Agregando {receiver} a nuevos activos en t={t} (primera participación, acción: {action})")
+                    print(f"  → Nuevos activos en t={t}: {list(new_active_by_time[t])}")
+                else:
+                    print(f"  → {receiver} ya participó antes, no se cuenta en new_t")
+            elif action == 'publish':
+                # Para new_t, no contamos la publicación inicial
+                print(f"  → Acción 'publish' - no se cuenta para new_t (solo acciones de respuesta)")
+            else:
+                print(f"  → Acción '{action}' ignorada para conteo de nuevos activos")
+        
+        print(f"\n--- Resumen de nuevos activos por tiempo ---")
+        # Calcular el número total de nodos nuevos activos en cada paso de tiempo
+        for t in sorted(new_active_by_time.keys()):
+            count = len(new_active_by_time[t])
+            new_t[str(t)] = count
+            print(f"Tiempo t={t}: {count} nuevos activos {list(new_active_by_time[t])}")
+    
+    print(f"\n=== RESULTADO FINAL NEW_T ===")
+    for t_str in sorted(new_t.keys(), key=int):
+        print(f"new_t['{t_str}'] = {new_t[t_str]}")
+    print("=" * 50)
+    
+    return new_t
+
 def calculate_t_max(t_pico: Dict[str, int]) -> int:
     """
     Calcula t_max: el paso de tiempo donde ocurre el valor máximo de t_pico.
