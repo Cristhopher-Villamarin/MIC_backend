@@ -993,13 +993,13 @@ def calculate_pct_ignorar(propagation_log: List[Dict[str, Any]], total_nodes: in
 
 def calculate_t_max(t_pico: Dict[str, int]) -> int:
     """
-    Calcula t_max: el valor máximo entre todos los valores de t_pico.
+    Calcula t_max: el paso de tiempo donde ocurre el valor máximo de t_pico.
     
     Args:
         t_pico: Diccionario con {paso_tiempo: numero_nodos_activos}
         
     Returns:
-        Valor máximo entre todos los valores de t_pico
+        Paso de tiempo donde ocurre el valor máximo
     """
     print(f"\n=== CALCULANDO T_MAX ===")
     print(f"t_pico recibido: {t_pico}")
@@ -1008,13 +1008,13 @@ def calculate_t_max(t_pico: Dict[str, int]) -> int:
         print("t_pico está vacío, retornando 0")
         return 0
     
-    # Obtener todos los valores de t_pico
-    values = list(t_pico.values())
-    print(f"Valores en t_pico: {values}")
+    # Encontrar el paso de tiempo con el valor máximo
+    max_time = max(t_pico.keys(), key=lambda t: t_pico[t])
+    max_value = t_pico[max_time]
     
-    # Encontrar el valor máximo
-    t_max = max(values)
-    print(f"Valor máximo encontrado: {t_max}")
+    print(f"Valores por tiempo: {[(t, v) for t, v in sorted(t_pico.items(), key=lambda x: int(x[0]))]}")
+    print(f"Valor máximo: {max_value} en tiempo t={max_time}")
+    print(f"t_max = {max_time} (paso de tiempo donde ocurre el máximo)")
     print("=" * 50)
     
-    return t_max
+    return int(max_time)
