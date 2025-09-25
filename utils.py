@@ -240,7 +240,7 @@ class PropagationEngine:
         self.history[seed_user].append((self.state_in[seed_user].copy(), self.state_out[seed_user].copy()))
 
         # agenda: (t, sender, receiver, vector_enviado)
-        agenda = deque([(0, None, seed_user, vec_msg)])
+        agenda = deque([(1, None, seed_user, vec_msg)])
         LOG: List[Dict[str, Any]] = []
 
         while agenda:
@@ -338,7 +338,7 @@ class SimplePropagationEngine:
             raise ValueError(f"Usuario inicial {seed_user} no encontrado en la red")
 
         # agenda: (t, sender, receiver)
-        agenda = deque([(0, None, seed_user)])
+        agenda = deque([(1, None, seed_user)])
         LOG: List[Dict[str, Any]] = []
 
         # Usar un diccionario para rastrear el número de veces que un nodo recibe el mensaje
@@ -419,7 +419,7 @@ class SIRPropagationEngine:
         # Variables de simulación
         propagation_log = []
         current_infected = [seed_user]
-        time_step = 0
+        time_step = 1
 
         # Simulación de propagación SIR
         while current_infected and time_step < max_steps:
@@ -507,7 +507,7 @@ class SISPropagationEngine:
         # Variables de simulación
         propagation_log = []
         current_infected = [seed_user]
-        time_step = 0
+        time_step = 1
 
         # Simulación de propagación SIS
         while current_infected and time_step < max_steps:
@@ -595,7 +595,7 @@ class RWSIRPropagationEngine:
         # Variables de simulación
         propagation_log = []
         current_infected = [seed_user]
-        time_step = 0
+        time_step = 1
 
         # Simulación de propagación SIR en red del mundo real
         while current_infected and time_step < max_steps:
@@ -683,7 +683,7 @@ class RWSISPropagationEngine:
         # Variables de simulación
         propagation_log = []
         current_infected = [seed_user]
-        time_step = 0
+        time_step = 1
 
         # Simulación de propagación SIS en red del mundo real
         while current_infected and time_step < max_steps:
@@ -836,23 +836,17 @@ def calculate_t_pico(propagation_log: List[Dict[str, Any]], method: str = "sir")
             
             print(f"Evento {i+1}: t={t}, action='{action}', sender='{sender}', receiver='{receiver}', publisher='{publisher}'")
             
-            if action in ['reenviar', 'modificar', 'forward']:
-                # Nodo que reenvía o modifica
+            if action in ['reenviar', 'modificar', 'forward', 'ignorar']:
+                # Nodo que reenvía, modifica o ignora
                 if t not in active_by_time:
                     active_by_time[t] = set()
                     print(f"  → Creando conjunto para tiempo t={t}")
-                active_by_time[t].add(sender)
-                print(f"  → Agregando {sender} a activos en t={t} (acción: {action})")
+                active_by_time[t].add(receiver)
+                print(f"  → Agregando {receiver} a activos en t={t} (acción: {action})")
                 print(f"  → Activos en t={t}: {list(active_by_time[t])}")
             elif action == 'publish':
-                # Nodo que publica inicialmente
-                if t not in active_by_time:
-                    active_by_time[t] = set()
-                    print(f"  → Creando conjunto para tiempo t={t}")
-                publisher_node = publisher or receiver
-                active_by_time[t].add(publisher_node)
-                print(f"  → Agregando {publisher_node} a activos en t={t} (publicación inicial)")
-                print(f"  → Activos en t={t}: {list(active_by_time[t])}")
+                # Para t_pico, no contamos la publicación inicial, solo las acciones de respuesta
+                print(f"  → Acción 'publish' - no se cuenta para t_pico (solo acciones de respuesta)")
             else:
                 print(f"  → Acción '{action}' ignorada para conteo de activos")
         
@@ -997,15 +991,115 @@ def calculate_pct_ignorar(propagation_log: List[Dict[str, Any]], total_nodes: in
     
     return result
 
+def calculate_new_t(propagation_log: List[Dict[str, Any]], method: str = "rip-dsn") -> Dict[int, int]:
+    """
+    Calcula new_t: el número de nodos que participan por primera vez en cada paso de tiempo.
+    
+    A diferencia de t_pico, new_t no cuenta nodos que ya participaron en pasos anteriores.
+    
+    Args:
+        propagation_log: Lista de eventos de propagación
+        method: Tipo de propagación ("sir", "sis", "rip-dsn", "emotion")
+        
+    Returns:
+        Diccionario con {paso_tiempo: numero_nodos_nuevos}
+    """
+    print(f"\n=== CALCULANDO NEW_T PARA MÉTODO: {method} ===")
+    print(f"Total de eventos en el log: {len(propagation_log)}")
+    
+    new_t = {}
+    nodes_that_participated = set()  # Nodos que ya participaron en pasos anteriores
+    
+    if method in ["sir", "sis"]:
+        print(f"\n--- Procesando modelo {method.upper()} para new_t ---")
+        # Para SIR/SIS: contar nodos infectados por primera vez en cada paso de tiempo
+        new_infected_by_time = {}
+        
+        for i, event in enumerate(propagation_log):
+            t = event.get('t', 0)
+            action = event.get('action', '')
+            receiver = event.get('receiver', '')
+            sender = event.get('sender', '')
+            
+            print(f"Evento {i+1}: t={t}, action='{action}', sender='{sender}', receiver='{receiver}'")
+            
+            if action == 'infect':
+                # Solo contar si el nodo no había participado antes
+                if receiver not in nodes_that_participated:
+                    if t not in new_infected_by_time:
+                        new_infected_by_time[t] = set()
+                        print(f"  → Creando conjunto para tiempo t={t}")
+                    new_infected_by_time[t].add(receiver)
+                    nodes_that_participated.add(receiver)
+                    print(f"  → Agregando {receiver} a nuevos infectados en t={t} (primera participación)")
+                    print(f"  → Nuevos infectados en t={t}: {list(new_infected_by_time[t])}")
+                else:
+                    print(f"  → {receiver} ya participó antes, no se cuenta en new_t")
+            else:
+                print(f"  → Acción '{action}' ignorada para conteo de nuevos infectados")
+        
+        print(f"\n--- Resumen de nuevos infectados por tiempo ---")
+        # Calcular el número total de nuevos infectados en cada paso de tiempo
+        for t in sorted(new_infected_by_time.keys()):
+            count = len(new_infected_by_time[t])
+            new_t[str(t)] = count
+            print(f"Tiempo t={t}: {count} nuevos infectados {list(new_infected_by_time[t])}")
+            
+    elif method in ["rip-dsn", "emotion"]:
+        print(f"\n--- Procesando modelo {method.upper()} para new_t ---")
+        # Para RIP-DSN y propagación emocional: contar nodos que participan por primera vez
+        new_active_by_time = {}
+        
+        for i, event in enumerate(propagation_log):
+            t = event.get('t', 0)
+            action = event.get('action', '')
+            receiver = event.get('receiver', '')
+            sender = event.get('sender', '')
+            publisher = event.get('publisher', '')
+            
+            print(f"Evento {i+1}: t={t}, action='{action}', sender='{sender}', receiver='{receiver}', publisher='{publisher}'")
+            
+            if action in ['reenviar', 'modificar', 'forward', 'ignorar']:
+                # Solo contar si el nodo no había participado antes
+                if receiver not in nodes_that_participated:
+                    if t not in new_active_by_time:
+                        new_active_by_time[t] = set()
+                        print(f"  → Creando conjunto para tiempo t={t}")
+                    new_active_by_time[t].add(receiver)
+                    nodes_that_participated.add(receiver)
+                    print(f"  → Agregando {receiver} a nuevos activos en t={t} (primera participación, acción: {action})")
+                    print(f"  → Nuevos activos en t={t}: {list(new_active_by_time[t])}")
+                else:
+                    print(f"  → {receiver} ya participó antes, no se cuenta en new_t")
+            elif action == 'publish':
+                # Para new_t, no contamos la publicación inicial
+                print(f"  → Acción 'publish' - no se cuenta para new_t (solo acciones de respuesta)")
+            else:
+                print(f"  → Acción '{action}' ignorada para conteo de nuevos activos")
+        
+        print(f"\n--- Resumen de nuevos activos por tiempo ---")
+        # Calcular el número total de nodos nuevos activos en cada paso de tiempo
+        for t in sorted(new_active_by_time.keys()):
+            count = len(new_active_by_time[t])
+            new_t[str(t)] = count
+            print(f"Tiempo t={t}: {count} nuevos activos {list(new_active_by_time[t])}")
+    
+    print(f"\n=== RESULTADO FINAL NEW_T ===")
+    for t_str in sorted(new_t.keys(), key=int):
+        print(f"new_t['{t_str}'] = {new_t[t_str]}")
+    print("=" * 50)
+    
+    return new_t
+
 def calculate_t_max(t_pico: Dict[str, int]) -> int:
     """
-    Calcula t_max: el valor máximo entre todos los valores de t_pico.
+    Calcula t_max: el paso de tiempo donde ocurre el valor máximo de t_pico.
     
     Args:
         t_pico: Diccionario con {paso_tiempo: numero_nodos_activos}
         
     Returns:
-        Valor máximo entre todos los valores de t_pico
+        Paso de tiempo donde ocurre el valor máximo
     """
     print(f"\n=== CALCULANDO T_MAX ===")
     print(f"t_pico recibido: {t_pico}")
@@ -1014,13 +1108,13 @@ def calculate_t_max(t_pico: Dict[str, int]) -> int:
         print("t_pico está vacío, retornando 0")
         return 0
     
-    # Obtener todos los valores de t_pico
-    values = list(t_pico.values())
-    print(f"Valores en t_pico: {values}")
+    # Encontrar el paso de tiempo con el valor máximo
+    max_time = max(t_pico.keys(), key=lambda t: t_pico[t])
+    max_value = t_pico[max_time]
     
-    # Encontrar el valor máximo
-    t_max = max(values)
-    print(f"Valor máximo encontrado: {t_max}")
+    print(f"Valores por tiempo: {[(t, v) for t, v in sorted(t_pico.items(), key=lambda x: int(x[0]))]}")
+    print(f"Valor máximo: {max_value} en tiempo t={max_time}")
+    print(f"t_max = {max_time} (paso de tiempo donde ocurre el máximo)")
     print("=" * 50)
     
-    return t_max
+    return int(max_time)

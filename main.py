@@ -8,7 +8,7 @@ import json
 import numpy as np
 import tensorflow as tf
 from generate_vectors import generar_datos_sinteticos_cargado, cargar_modelo_y_escalador
-from utils import EmotionAnalyzer, PropagationEngine, SimplePropagationEngine, SIRPropagationEngine, SISPropagationEngine, RWSIRPropagationEngine, RWSISPropagationEngine, calculate_alcance_final, calculate_t_pico, calculate_t_max, calculate_pct_modificar, calculate_pct_reenviar, calculate_pct_ignorar
+from utils import EmotionAnalyzer, PropagationEngine, SimplePropagationEngine, SIRPropagationEngine, SISPropagationEngine, RWSIRPropagationEngine, RWSISPropagationEngine, calculate_alcance_final, calculate_t_pico, calculate_new_t, calculate_t_max, calculate_pct_modificar, calculate_pct_reenviar, calculate_pct_ignorar
 from pymongo import MongoClient
 from datetime import datetime
 import uuid
@@ -122,36 +122,50 @@ async def propagate(
     try:
         thresholds_dict = json.loads(thresholds) if thresholds else {}
         if csv_file and xlsx_file and not (nodes_csv_file or links_csv_file):
-            if method not in ["ema", "sma"]:
-                raise HTTPException(400, detail="El método debe ser 'ema' o 'sma'")
+            if method not in ["ema", "sma", "rip-dsn"]:
+                raise HTTPException(400, detail="El método debe ser 'ema', 'sma' o 'rip-dsn'")
             edges_df = pd.read_csv(csv_file.file)
             states_df = pd.read_excel(xlsx_file.file)
             engine.build(edges_df, states_df, thresholds=thresholds_dict)
             # Verificar si seed_user está en el grafo
             if seed_user not in engine.graph.nodes:
                 raise HTTPException(400, detail=f"El usuario inicial '{seed_user}' no se encuentra en la red")
-            if custom_vector:
-                try:
-                    vector_dict = json.loads(custom_vector)
-                    if not isinstance(vector_dict, dict):
-                        raise ValueError("El vector personalizado debe ser un diccionario")
-                    complete_vector = {key: vector_dict.get(key, 0.0) for key in analyzer.labels}
-                    vector = np.array(list(complete_vector.values()), dtype=float)
-                except json.JSONDecodeError:
-                    raise HTTPException(400, detail="El custom_vector debe ser un JSON válido")
-                except ValueError as ve:
-                    raise HTTPException(400, detail=str(ve))
+            if method == "rip-dsn":
+                # Para RIP-DSN, usar simple_engine
+                log = simple_engine.propagate(seed_user, message, max_steps)
+                vector_dict = {}
             else:
-                vector = analyzer.vector(message)
-            vector_dict, log = engine.propagate(seed_user, message, max_steps, method=method, custom_vector=vector)
+                # Para métodos emocionales (EMA/SMA)
+                if custom_vector:
+                    try:
+                        vector_dict = json.loads(custom_vector)
+                        if not isinstance(vector_dict, dict):
+                            raise ValueError("El vector personalizado debe ser un diccionario")
+                        complete_vector = {key: vector_dict.get(key, 0.0) for key in analyzer.labels}
+                        vector = np.array(list(complete_vector.values()), dtype=float)
+                    except json.JSONDecodeError:
+                        raise HTTPException(400, detail="El custom_vector debe ser un JSON válido")
+                    except ValueError as ve:
+                        raise HTTPException(400, detail=str(ve))
+                else:
+                    vector = analyzer.vector(message)
+                vector_dict, log = engine.propagate(seed_user, message, max_steps, method=method, custom_vector=vector)
             
             # Calcular alcance final y t_pico
             alcance_final = calculate_alcance_final(log)
-            t_pico = calculate_t_pico(log, method="emotion")
+            if method == "rip-dsn":
+                t_pico = calculate_t_pico(log, method="rip-dsn")
+                new_t = calculate_new_t(log, method="rip-dsn")
+            else:
+                t_pico = calculate_t_pico(log, method="emotion")
+                new_t = calculate_new_t(log, method="emotion")
             t_max = calculate_t_max(t_pico)
             
             # Calcular nuevas métricas para RIP DSN
-            total_nodes = len(engine.graph.nodes()) if engine.graph else 0
+            if method == "rip-dsn":
+                total_nodes = len(simple_engine.nodes) if simple_engine.nodes else 0
+            else:
+                total_nodes = len(engine.graph.nodes()) if engine.graph else 0
             pct_modificar = calculate_pct_modificar(log, total_nodes)
             pct_reenviar = calculate_pct_reenviar(log, total_nodes)
             pct_ignorar = calculate_pct_ignorar(log, total_nodes, pct_reenviar, pct_modificar)
@@ -173,6 +187,7 @@ async def propagate(
                 "cluster_filtering": cluster_filtering,
                 "alcance_final": alcance_final,
                 "t_pico": t_pico,
+                "new_t": new_t,
                 "t_max": t_max,
                 "pct_modificar": pct_modificar,
                 "pct_reenviar": pct_reenviar,
@@ -204,6 +219,7 @@ async def propagate(
             # Calcular alcance final y t_pico
             alcance_final = calculate_alcance_final(log)
             t_pico = calculate_t_pico(log, method="rip-dsn")
+            new_t = calculate_new_t(log, method="rip-dsn")
             t_max = calculate_t_max(t_pico)
             
             # Calcular nuevas métricas para RIP DSN
@@ -228,6 +244,7 @@ async def propagate(
                 "cluster_filtering": cluster_filtering,
                 "alcance_final": alcance_final,
                 "t_pico": t_pico,
+                "new_t": new_t,
                 "t_max": t_max,
                 "pct_modificar": pct_modificar,
                 "pct_reenviar": pct_reenviar,
