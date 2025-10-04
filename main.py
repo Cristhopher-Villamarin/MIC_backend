@@ -317,6 +317,7 @@ async def propagate_ba_sir(
         # Calcular alcance final y t_pico
         alcance_final = calculate_alcance_final(log)
         t_pico = calculate_t_pico(log, method="sir")
+        new_t = calculate_new_t(log, method="sir")
         t_max = calculate_t_max(t_pico)
         
         # Save SIR propagation log to MongoDB
@@ -335,6 +336,7 @@ async def propagate_ba_sir(
             "max_steps": max_steps,
             "alcance_final": alcance_final,
             "t_pico": t_pico,
+            "new_t": new_t,
             "t_max": t_max,
             "timestamp": datetime.utcnow(),
             "log": log
@@ -384,6 +386,7 @@ async def propagate_ba_sis(
         # Calcular alcance final y t_pico
         alcance_final = calculate_alcance_final(log)
         t_pico = calculate_t_pico(log, method="sis")
+        new_t = calculate_new_t(log, method="sis")
         t_max = calculate_t_max(t_pico)
         
         # Save SIS propagation log to MongoDB
@@ -402,6 +405,7 @@ async def propagate_ba_sis(
             "max_steps": max_steps,
             "alcance_final": alcance_final,
             "t_pico": t_pico,
+            "new_t": new_t,
             "t_max": t_max,
             "timestamp": datetime.utcnow(),
             "log": log
@@ -451,6 +455,7 @@ async def propagate_hk_sir(
         # Calcular alcance final y t_pico
         alcance_final = calculate_alcance_final(log)
         t_pico = calculate_t_pico(log, method="sir")
+        new_t = calculate_new_t(log, method="sir")
         t_max = calculate_t_max(t_pico)
         
         # Save Holme-Kim SIR propagation log to MongoDB
@@ -469,6 +474,7 @@ async def propagate_hk_sir(
             "max_steps": max_steps,
             "alcance_final": alcance_final,
             "t_pico": t_pico,
+            "new_t": new_t,
             "t_max": t_max,
             "timestamp": datetime.utcnow(),
             "log": log
@@ -518,6 +524,7 @@ async def propagate_hk_sis(
         # Calcular alcance final y t_pico
         alcance_final = calculate_alcance_final(log)
         t_pico = calculate_t_pico(log, method="sis")
+        new_t = calculate_new_t(log, method="sis")
         t_max = calculate_t_max(t_pico)
         
         # Save Holme-Kim SIS propagation log to MongoDB
@@ -536,6 +543,7 @@ async def propagate_hk_sis(
             "max_steps": max_steps,
             "alcance_final": alcance_final,
             "t_pico": t_pico,
+            "new_t": new_t,
             "t_max": t_max,
             "timestamp": datetime.utcnow(),
             "log": log
@@ -585,6 +593,7 @@ async def propagate_rw_sir(
         # Calcular alcance final y t_pico
         alcance_final = calculate_alcance_final(log)
         t_pico = calculate_t_pico(log, method="sir")
+        new_t = calculate_new_t(log, method="sir")
         t_max = calculate_t_max(t_pico)
         
         # Save Real World SIR propagation log to MongoDB
@@ -603,6 +612,7 @@ async def propagate_rw_sir(
             "max_steps": max_steps,
             "alcance_final": alcance_final,
             "t_pico": t_pico,
+            "new_t": new_t,
             "t_max": t_max,
             "timestamp": datetime.utcnow(),
             "log": log
@@ -652,6 +662,7 @@ async def propagate_rw_sis(
         # Calcular alcance final y t_pico
         alcance_final = calculate_alcance_final(log)
         t_pico = calculate_t_pico(log, method="sis")
+        new_t = calculate_new_t(log, method="sis")
         t_max = calculate_t_max(t_pico)
         
         # Save Real World SIS propagation log to MongoDB
@@ -670,6 +681,7 @@ async def propagate_rw_sis(
             "max_steps": max_steps,
             "alcance_final": alcance_final,
             "t_pico": t_pico,
+            "new_t": new_t,
             "t_max": t_max,
             "timestamp": datetime.utcnow(),
             "log": log
