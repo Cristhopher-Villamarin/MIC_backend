@@ -718,6 +718,7 @@ async def get_reports():
             "policy": 1, 
             "alcance_final": 1, 
             "t_pico": 1, 
+            "new_t": 1,
             "t_max": 1,
             "timestamp": 1,
             "beta": 1,
@@ -772,6 +773,7 @@ async def get_reports():
                 "policy": report.get("policy", "N/A"),
                 "finalReach": report.get("alcance_final", "N/A"),
                 "peakTime": report.get("t_pico", "N/A"),
+                "new_t": report.get("new_t", "N/A"),
                 "maxPeakTime": report.get("t_max", "N/A"),
                 "createdAt": report.get("timestamp", datetime.utcnow()).isoformat(),
                 # Campos adicionales para el modal de detalle
