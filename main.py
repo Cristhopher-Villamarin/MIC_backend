@@ -39,11 +39,13 @@ rw_sis_engine = RWSISPropagationEngine()  # ⇠ /propagate-rw-sis
 MONGO_URI = "mongodb://localhost:27017"  # Replace with your MongoDB URI
 DB_NAME = "emotional_propagation"
 COLLECTION_NAME = "propagation_logs"
+NETWORKS_COLLECTION_NAME = "saved_networks"
 
 # Initialize MongoDB client
 mongo_client = MongoClient(MONGO_URI)
 db = mongo_client[DB_NAME]
 collection = db[COLLECTION_NAME]
+networks_collection = db[NETWORKS_COLLECTION_NAME]
 
 # Cargar modelo VAE, escalador y metadatos al iniciar el servidor
 try:
@@ -821,6 +823,134 @@ async def health():
     Verifica el estado del servidor.
     """
     return {"status": "ok"}
+
+@app.post("/save-network")
+async def save_network(
+    network_name: str = Form(..., description="Nombre de la red"),
+    network_type: str = Form(..., description="Tipo de red (barabasi-albert o holme-kim)"),
+    nodes: str = Form(..., description="JSON con los nodos de la red"),
+    links: str = Form(..., description="JSON con los enlaces de la red"),
+    parameters: str = Form(..., description="JSON con los parámetros de generación")
+):
+    """
+    Guarda una red generada en la base de datos.
+    """
+    try:
+        import json
+        nodes_data = json.loads(nodes)
+        links_data = json.loads(links)
+        parameters_data = json.loads(parameters)
+        
+        # Crear documento de red
+        network_document = {
+            "network_id": str(uuid.uuid4()),
+            "network_name": network_name,
+            "network_type": network_type,
+            "nodes": nodes_data,
+            "links": links_data,
+            "parameters": parameters_data,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        }
+        
+        # Guardar en MongoDB
+        result = networks_collection.insert_one(network_document)
+        
+        return {
+            "network_id": network_document["network_id"],
+            "message": f"Red '{network_name}' guardada correctamente",
+            "status": "success"
+        }
+        
+    except json.JSONDecodeError as e:
+        raise HTTPException(400, detail=f"Error al procesar JSON: {str(e)}")
+    except Exception as e:
+        raise HTTPException(500, detail=f"Error al guardar la red: {str(e)}")
+
+@app.get("/saved-networks")
+async def get_saved_networks():
+    """
+    Obtiene todas las redes guardadas.
+    """
+    try:
+        networks = list(networks_collection.find({}, {
+            "_id": 1,
+            "network_id": 1,
+            "network_name": 1,
+            "network_type": 1,
+            "created_at": 1,
+            "updated_at": 1,
+            "parameters": 1
+        }))
+        
+        processed_networks = []
+        for network in networks:
+            processed_network = {
+                "id": str(network["_id"]),
+                "network_id": network.get("network_id"),
+                "network_name": network.get("network_name"),
+                "network_type": network.get("network_type"),
+                "created_at": network.get("created_at", datetime.utcnow()).isoformat(),
+                "updated_at": network.get("updated_at", datetime.utcnow()).isoformat(),
+                "parameters": network.get("parameters", {})
+            }
+            processed_networks.append(processed_network)
+        
+        # Ordenar por fecha de creación (más recientes primero)
+        processed_networks.sort(key=lambda x: x["created_at"], reverse=True)
+        
+        return processed_networks
+        
+    except Exception as e:
+        raise HTTPException(500, detail=f"Error al obtener las redes guardadas: {str(e)}")
+
+@app.get("/saved-networks/{network_id}")
+async def get_saved_network(network_id: str):
+    """
+    Obtiene una red específica por su ID.
+    """
+    try:
+        network = networks_collection.find_one({"network_id": network_id})
+        
+        if not network:
+            raise HTTPException(404, detail="Red no encontrada")
+        
+        return {
+            "network_id": network["network_id"],
+            "network_name": network["network_name"],
+            "network_type": network["network_type"],
+            "nodes": network["nodes"],
+            "links": network["links"],
+            "parameters": network["parameters"],
+            "created_at": network["created_at"].isoformat(),
+            "updated_at": network["updated_at"].isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, detail=f"Error al obtener la red: {str(e)}")
+
+@app.delete("/saved-networks/{network_id}")
+async def delete_saved_network(network_id: str):
+    """
+    Elimina una red guardada.
+    """
+    try:
+        result = networks_collection.delete_one({"network_id": network_id})
+        
+        if result.deleted_count == 0:
+            raise HTTPException(404, detail="Red no encontrada")
+        
+        return {
+            "message": "Red eliminada correctamente",
+            "status": "success"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, detail=f"Error al eliminar la red: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
