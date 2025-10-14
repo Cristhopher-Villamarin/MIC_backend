@@ -119,7 +119,8 @@ async def propagate(
     cluster_filtering: str = Form(..., description="Filtrado de clúster"),
     propagation_name: str = Form(..., description="Nombre de la propagación"),
     tipo_red: str = Form("barabasi-albert", description="Tipo de red"),
-    metodo: str = Form("RIP-DSN", description="Método de propagación")
+    metodo: str = Form("RIP-DSN", description="Método de propagación"),
+    network_id: str = Form(None, description="ID de red para filtrar (opcional)")
 ):
     try:
         thresholds_dict = json.loads(thresholds) if thresholds else {}
@@ -128,16 +129,38 @@ async def propagate(
                 raise HTTPException(400, detail="El método debe ser 'ema', 'sma' o 'rip-dsn'")
             edges_df = pd.read_csv(csv_file.file)
             states_df = pd.read_excel(xlsx_file.file)
-            engine.build(edges_df, states_df, thresholds=thresholds_dict)
-            # Verificar si seed_user está en el grafo
-            if seed_user not in engine.graph.nodes:
-                raise HTTPException(400, detail=f"El usuario inicial '{seed_user}' no se encuentra en la red")
+            
+            # Convertir network_id a int si está presente
+            network_id_int = None
+            if network_id is not None and network_id.strip():
+                try:
+                    network_id_int = int(network_id)
+                except ValueError:
+                    print(f"Advertencia: network_id '{network_id}' no es un entero válido. Se usarán todos los nodos.")
+            
             if method == "rip-dsn":
-                # Para RIP-DSN, usar simple_engine
+                # Para RIP-DSN, usar simple_engine con datos simples
+                # Extraer nodos del states_df (contiene user_name)
+                nodes_df = states_df[['user_name']].rename(columns={'user_name': 'node'})
+                
+                # Pasar network_id para filtrar correctamente
+                simple_engine.build(edges_df, nodes_df, network_id=network_id_int)
+                
+                # Verificar si seed_user está en el grafo
+                if seed_user not in simple_engine.nodes:
+                    raise HTTPException(400, detail=f"El usuario inicial '{seed_user}' no se encuentra en la red")
+                
                 log = simple_engine.propagate(seed_user, message, max_steps)
                 vector_dict = {}
             else:
                 # Para métodos emocionales (EMA/SMA)
+                # Construir engine con network_id para filtrar correctamente
+                engine.build(edges_df, states_df, network_id=network_id_int, thresholds=thresholds_dict)
+                
+                # Verificar si seed_user está en el grafo
+                if seed_user not in engine.graph.nodes:
+                    raise HTTPException(400, detail=f"El usuario inicial '{seed_user}' no se encuentra en la red")
+                
                 if custom_vector:
                     try:
                         vector_dict = json.loads(custom_vector)
@@ -170,7 +193,7 @@ async def propagate(
                 total_nodes = len(engine.graph.nodes()) if engine.graph else 0
             pct_modificar = calculate_pct_modificar(log, total_nodes)
             pct_reenviar = calculate_pct_reenviar(log, total_nodes)
-            pct_ignorar = calculate_pct_ignorar(log, total_nodes, pct_reenviar, pct_modificar)
+            pct_ignorar = calculate_pct_ignorar(log, total_nodes, alcance_final)
             
             # Save propagation log to MongoDB
             propagation_id = str(uuid.uuid4())
@@ -187,6 +210,7 @@ async def propagate(
                 "k": k,
                 "policy": policy,
                 "cluster_filtering": cluster_filtering,
+                "total_nodes": total_nodes,  # Número total de nodos en la red
                 "alcance_final": alcance_final,
                 "t_pico": t_pico,
                 "new_t": new_t,
@@ -213,7 +237,17 @@ async def propagate(
         elif nodes_csv_file and links_csv_file and not (csv_file or xlsx_file):
             nodes_df = pd.read_csv(nodes_csv_file.file)
             links_df = pd.read_csv(links_csv_file.file)
-            simple_engine.build(links_df, nodes_df)
+            
+            # Convertir network_id a int si está presente
+            network_id_int = None
+            if network_id is not None and network_id.strip():
+                try:
+                    network_id_int = int(network_id)
+                except ValueError:
+                    print(f"Advertencia: network_id '{network_id}' no es un entero válido. Se usarán todos los nodos.")
+            
+            # Pasar network_id a simple_engine.build() para filtrar correctamente
+            simple_engine.build(links_df, nodes_df, network_id=network_id_int)
             if seed_user not in simple_engine.nodes:
                 raise HTTPException(400, detail=f"El usuario inicial '{seed_user}' no se encuentra en la red")
             log = simple_engine.propagate(seed_user, message, max_steps)
@@ -225,10 +259,11 @@ async def propagate(
             t_max = calculate_t_max(t_pico)
             
             # Calcular nuevas métricas para RIP DSN
+            # CORRECCIÓN: usar el número de nodos de la red filtrada, no el total del archivo
             total_nodes = len(simple_engine.nodes) if simple_engine.nodes else 0
             pct_modificar = calculate_pct_modificar(log, total_nodes)
             pct_reenviar = calculate_pct_reenviar(log, total_nodes)
-            pct_ignorar = calculate_pct_ignorar(log, total_nodes, pct_reenviar, pct_modificar)
+            pct_ignorar = calculate_pct_ignorar(log, total_nodes, alcance_final)
             
             # Save RIP-DSN propagation log to MongoDB
             propagation_id = str(uuid.uuid4())
@@ -244,6 +279,7 @@ async def propagate(
                 "k": k,
                 "policy": policy,
                 "cluster_filtering": cluster_filtering,
+                "total_nodes": total_nodes,  # Número total de nodos en la red
                 "alcance_final": alcance_final,
                 "t_pico": t_pico,
                 "new_t": new_t,
@@ -322,6 +358,9 @@ async def propagate_ba_sir(
         new_t = calculate_new_t(log, method="sir")
         t_max = calculate_t_max(t_pico)
         
+        # Calcular total de nodos en la red
+        total_nodes = len(sir_engine.nodes) if sir_engine.nodes else 0
+        
         # Save SIR propagation log to MongoDB
         propagation_id = str(uuid.uuid4())
         propagation_document = {
@@ -336,6 +375,7 @@ async def propagate_ba_sir(
             "k": k,
             "policy": policy,
             "max_steps": max_steps,
+            "total_nodes": total_nodes,  # Número total de nodos en la red
             "alcance_final": alcance_final,
             "t_pico": t_pico,
             "new_t": new_t,
@@ -391,6 +431,9 @@ async def propagate_ba_sis(
         new_t = calculate_new_t(log, method="sis")
         t_max = calculate_t_max(t_pico)
         
+        # Calcular total de nodos en la red
+        total_nodes = len(sis_engine.nodes) if sis_engine.nodes else 0
+        
         # Save SIS propagation log to MongoDB
         propagation_id = str(uuid.uuid4())
         propagation_document = {
@@ -405,6 +448,7 @@ async def propagate_ba_sis(
             "k": k,
             "policy": policy,
             "max_steps": max_steps,
+            "total_nodes": total_nodes,  # Número total de nodos en la red
             "alcance_final": alcance_final,
             "t_pico": t_pico,
             "new_t": new_t,
@@ -460,6 +504,9 @@ async def propagate_hk_sir(
         new_t = calculate_new_t(log, method="sir")
         t_max = calculate_t_max(t_pico)
         
+        # Calcular total de nodos en la red
+        total_nodes = len(sir_engine.nodes) if sir_engine.nodes else 0
+        
         # Save Holme-Kim SIR propagation log to MongoDB
         propagation_id = str(uuid.uuid4())
         propagation_document = {
@@ -474,6 +521,7 @@ async def propagate_hk_sir(
             "k": k,
             "policy": policy,
             "max_steps": max_steps,
+            "total_nodes": total_nodes,  # Número total de nodos en la red
             "alcance_final": alcance_final,
             "t_pico": t_pico,
             "new_t": new_t,
@@ -529,6 +577,9 @@ async def propagate_hk_sis(
         new_t = calculate_new_t(log, method="sis")
         t_max = calculate_t_max(t_pico)
         
+        # Calcular total de nodos en la red
+        total_nodes = len(sis_engine.nodes) if sis_engine.nodes else 0
+        
         # Save Holme-Kim SIS propagation log to MongoDB
         propagation_id = str(uuid.uuid4())
         propagation_document = {
@@ -543,6 +594,7 @@ async def propagate_hk_sis(
             "k": k,
             "policy": policy,
             "max_steps": max_steps,
+            "total_nodes": total_nodes,  # Número total de nodos en la red
             "alcance_final": alcance_final,
             "t_pico": t_pico,
             "new_t": new_t,
@@ -598,6 +650,9 @@ async def propagate_rw_sir(
         new_t = calculate_new_t(log, method="sir")
         t_max = calculate_t_max(t_pico)
         
+        # Calcular total de nodos en la red
+        total_nodes = len(rw_sir_engine.nodes) if rw_sir_engine.nodes else 0
+        
         # Save Real World SIR propagation log to MongoDB
         propagation_id = str(uuid.uuid4())
         propagation_document = {
@@ -612,6 +667,7 @@ async def propagate_rw_sir(
             "k": k,
             "policy": policy,
             "max_steps": max_steps,
+            "total_nodes": total_nodes,  # Número total de nodos en la red
             "alcance_final": alcance_final,
             "t_pico": t_pico,
             "new_t": new_t,
@@ -667,6 +723,9 @@ async def propagate_rw_sis(
         new_t = calculate_new_t(log, method="sis")
         t_max = calculate_t_max(t_pico)
         
+        # Calcular total de nodos en la red
+        total_nodes = len(rw_sis_engine.nodes) if rw_sis_engine.nodes else 0
+        
         # Save Real World SIS propagation log to MongoDB
         propagation_id = str(uuid.uuid4())
         propagation_document = {
@@ -681,6 +740,7 @@ async def propagate_rw_sis(
             "k": k,
             "policy": policy,
             "max_steps": max_steps,
+            "total_nodes": total_nodes,  # Número total de nodos en la red
             "alcance_final": alcance_final,
             "t_pico": t_pico,
             "new_t": new_t,
@@ -718,6 +778,7 @@ async def get_reports():
             "metodo": 1, 
             "seed_user": 1, 
             "policy": 1, 
+            "total_nodes": 1,  # Número total de nodos en la red
             "alcance_final": 1, 
             "t_pico": 1, 
             "new_t": 1,
@@ -773,6 +834,7 @@ async def get_reports():
                 "propagationMethod": propagation_method,
                 "user": report.get("seed_user", "N/A"),
                 "policy": report.get("policy", "N/A"),
+                "totalNodes": report.get("total_nodes", "N/A"),
                 "finalReach": report.get("alcance_final", "N/A"),
                 "peakTime": report.get("t_pico", "N/A"),
                 "new_t": report.get("new_t", "N/A"),
@@ -795,6 +857,7 @@ async def get_reports():
                 "tipo_red": network_type,
                 "metodo": propagation_method,
                 "seed_user": report.get("seed_user", "N/A"),
+                "total_nodes": report.get("total_nodes", "N/A"),
                 "alcance_final": report.get("alcance_final", "N/A"),
                 "t_pico": report.get("t_pico", "N/A"),
                 "t_max": report.get("t_max", "N/A")
