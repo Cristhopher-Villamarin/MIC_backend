@@ -963,31 +963,39 @@ def calculate_pct_reenviar(propagation_log: List[Dict[str, Any]], total_nodes: i
     
     return result
 
-def calculate_pct_ignorar(propagation_log: List[Dict[str, Any]], total_nodes: int, pct_reenviar: float, pct_modificar: float) -> float:
+def calculate_pct_ignorar(propagation_log: List[Dict[str, Any]], total_nodes: int, alcance_final: int) -> float:
     """
-    Calcula el porcentaje de nodos que ignoraron mensajes usando la fórmula: 1 - (reenviar + modificar).
+    Calcula el porcentaje de nodos que ignoraron mensajes (no participaron en la propagación).
+    
+    La fórmula correcta es: (total_nodes - alcance_final) / total_nodes
     
     Args:
-        propagation_log: Lista de eventos de propagación (no se usa en la nueva fórmula)
-        total_nodes: Número total de nodos en la red (no se usa en la nueva fórmula)
-        pct_reenviar: Proporción de nodos que reenviaron (0.0 a 1.0)
-        pct_modificar: Proporción de nodos que modificaron (0.0 a 1.0)
+        propagation_log: Lista de eventos de propagación (no se usa, solo para compatibilidad)
+        total_nodes: Número total de nodos en la red
+        alcance_final: Número de nodos que participaron en la propagación (recibieron el mensaje)
         
     Returns:
         Proporción de nodos que ignoraron mensajes (0.0 a 1.0)
     """
-    print(f"\n=== CALCULANDO PCT_IGNORAR (NUEVA FÓRMULA) ===")
-    print(f"Proporción de reenvío: {pct_reenviar}")
-    print(f"Proporción de modificación: {pct_modificar}")
+    print(f"\n=== CALCULANDO PCT_IGNORAR (FÓRMULA CORREGIDA) ===")
+    print(f"Total de nodos en la red: {total_nodes}")
+    print(f"Alcance final (nodos que participaron): {alcance_final}")
+    print(f"Nodos que NO participaron (ignoraron): {total_nodes - alcance_final}")
     
-    # Nueva fórmula: 1 - (reenviar + modificar)
-    pct_ignorar = 1.0 - (pct_reenviar + pct_modificar)
+    if total_nodes == 0:
+        print("Total de nodos es 0, retornando 0.0")
+        print("=" * 50)
+        return 0.0
+    
+    # Fórmula corregida: nodos que no participaron / total de nodos
+    pct_ignorar = (total_nodes - alcance_final) / total_nodes
     
     # Asegurar que el resultado esté en el rango [0, 1]
     pct_ignorar = max(0.0, min(1.0, pct_ignorar))
     
     result = round(pct_ignorar, 4)
-    print(f"Fórmula: 1 - ({pct_reenviar} + {pct_modificar}) = {result}")
+    print(f"Fórmula: ({total_nodes} - {alcance_final}) / {total_nodes} = {result}")
+    print(f"Porcentaje: {result * 100:.2f}%")
     print("=" * 50)
     
     return result
