@@ -12,6 +12,8 @@ from utils import EmotionAnalyzer, PropagationEngine, SimplePropagationEngine, S
 from pymongo import MongoClient
 from datetime import datetime
 import uuid
+import gridfs
+import pickle
 
 app = FastAPI(
     title="Backend · Propagación Emocional",
@@ -46,6 +48,65 @@ mongo_client = MongoClient(MONGO_URI)
 db = mongo_client[DB_NAME]
 collection = db[COLLECTION_NAME]
 networks_collection = db[NETWORKS_COLLECTION_NAME]
+
+# Initialize GridFS for storing large logs
+fs = gridfs.GridFS(db)
+
+# ───────────────────────── GRIDFS HELPER FUNCTIONS ─────────────────────
+def save_log_to_gridfs(log_data: list, metadata: dict = None) -> str:
+    """
+    Guarda un log grande en GridFS y retorna el ID del archivo.
+    
+    Args:
+        log_data: Lista con los datos del log de propagación
+        metadata: Diccionario con metadata adicional (opcional)
+    
+    Returns:
+        String con el ID del archivo en GridFS
+    """
+    try:
+        # Serializar el log a bytes usando pickle
+        log_bytes = pickle.dumps(log_data)
+        
+        # Guardar en GridFS con metadata
+        file_id = fs.put(
+            log_bytes,
+            filename=f"propagation_log_{uuid.uuid4()}",
+            metadata=metadata or {},
+            content_type="application/octet-stream"
+        )
+        
+        print(f"Log guardado en GridFS con ID: {file_id}, tamaño: {len(log_bytes)} bytes")
+        return str(file_id)
+    except Exception as e:
+        print(f"Error guardando log en GridFS: {str(e)}")
+        raise
+
+def retrieve_log_from_gridfs(file_id: str) -> list:
+    """
+    Recupera un log desde GridFS usando su ID.
+    
+    Args:
+        file_id: String con el ID del archivo en GridFS
+    
+    Returns:
+        Lista con los datos del log de propagación
+    """
+    try:
+        from bson import ObjectId
+        
+        # Recuperar el archivo desde GridFS
+        grid_out = fs.get(ObjectId(file_id))
+        log_bytes = grid_out.read()
+        
+        # Deserializar el log desde bytes
+        log_data = pickle.loads(log_bytes)
+        
+        print(f"Log recuperado desde GridFS con ID: {file_id}, tamaño: {len(log_bytes)} bytes")
+        return log_data
+    except Exception as e:
+        print(f"Error recuperando log desde GridFS: {str(e)}")
+        raise
 
 # Cargar modelo VAE, escalador y metadatos al iniciar el servidor
 try:
@@ -195,8 +256,20 @@ async def propagate(
             pct_reenviar = calculate_pct_reenviar(log, total_nodes)
             pct_ignorar = calculate_pct_ignorar(log, total_nodes, alcance_final)
             
-            # Save propagation log to MongoDB
+            # Save propagation log to MongoDB with GridFS for large logs
             propagation_id = str(uuid.uuid4())
+            
+            # Guardar el log en GridFS y obtener su file_id
+            try:
+                log_file_id = save_log_to_gridfs(log, metadata={
+                    "propagation_id": propagation_id,
+                    "method": method,
+                    "timestamp": datetime.utcnow()
+                })
+            except Exception as gridfs_error:
+                print(f"Error saving log to GridFS: {str(gridfs_error)}")
+                raise HTTPException(500, detail=f"Error saving propagation log to GridFS: {str(gridfs_error)}")
+            
             propagation_document = {
                 "propagation_id": propagation_id,
                 "propagation_name": propagation_name,
@@ -219,11 +292,11 @@ async def propagate(
                 "pct_reenviar": pct_reenviar,
                 "pct_ignorar": pct_ignorar,
                 "timestamp": datetime.utcnow(),
-                "log": log
+                "log_gridfs_id": log_file_id  # Referencia al log en GridFS en lugar del log completo
             }
             try:
                 collection.insert_one(propagation_document)
-                print(f"Propagation log saved to MongoDB with ID: {propagation_id}")
+                print(f"Propagation log saved to MongoDB with ID: {propagation_id}, log stored in GridFS: {log_file_id}")
             except Exception as mongo_error:
                 print(f"Error saving to MongoDB: {str(mongo_error)}")
                 raise HTTPException(500, detail=f"Error saving propagation log to MongoDB: {str(mongo_error)}")
@@ -265,8 +338,20 @@ async def propagate(
             pct_reenviar = calculate_pct_reenviar(log, total_nodes)
             pct_ignorar = calculate_pct_ignorar(log, total_nodes, alcance_final)
             
-            # Save RIP-DSN propagation log to MongoDB
+            # Save RIP-DSN propagation log to MongoDB with GridFS for large logs
             propagation_id = str(uuid.uuid4())
+            
+            # Guardar el log en GridFS y obtener su file_id
+            try:
+                log_file_id = save_log_to_gridfs(log, metadata={
+                    "propagation_id": propagation_id,
+                    "method": "rip-dsn",
+                    "timestamp": datetime.utcnow()
+                })
+            except Exception as gridfs_error:
+                print(f"Error saving log to GridFS: {str(gridfs_error)}")
+                raise HTTPException(500, detail=f"Error saving propagation log to GridFS: {str(gridfs_error)}")
+            
             propagation_document = {
                 "propagation_id": propagation_id,
                 "propagation_name": propagation_name,
@@ -288,11 +373,11 @@ async def propagate(
                 "pct_reenviar": pct_reenviar,
                 "pct_ignorar": pct_ignorar,
                 "timestamp": datetime.utcnow(),
-                "log": log
+                "log_gridfs_id": log_file_id  # Referencia al log en GridFS en lugar del log completo
             }
             try:
                 collection.insert_one(propagation_document)
-                print(f"RIP-DSN propagation log saved to MongoDB with ID: {propagation_id}")
+                print(f"RIP-DSN propagation log saved to MongoDB with ID: {propagation_id}, log stored in GridFS: {log_file_id}")
             except Exception as mongo_error:
                 print(f"Error saving to MongoDB: {str(mongo_error)}")
                 raise HTTPException(500, detail=f"Error saving propagation log to MongoDB: {str(mongo_error)}")
@@ -361,8 +446,20 @@ async def propagate_ba_sir(
         # Calcular total de nodos en la red
         total_nodes = len(sir_engine.nodes) if sir_engine.nodes else 0
         
-        # Save SIR propagation log to MongoDB
+        # Save SIR propagation log to MongoDB with GridFS for large logs
         propagation_id = str(uuid.uuid4())
+        
+        # Guardar el log en GridFS y obtener su file_id
+        try:
+            log_file_id = save_log_to_gridfs(log, metadata={
+                "propagation_id": propagation_id,
+                "method": "ba-sir",
+                "timestamp": datetime.utcnow()
+            })
+        except Exception as gridfs_error:
+            print(f"Error saving log to GridFS: {str(gridfs_error)}")
+            raise HTTPException(500, detail=f"Error saving propagation log to GridFS: {str(gridfs_error)}")
+        
         propagation_document = {
             "propagation_id": propagation_id,
             "propagation_name": propagation_name,
@@ -381,11 +478,11 @@ async def propagate_ba_sir(
             "new_t": new_t,
             "t_max": t_max,
             "timestamp": datetime.utcnow(),
-            "log": log
+            "log_gridfs_id": log_file_id  # Referencia al log en GridFS en lugar del log completo
         }
         try:
             collection.insert_one(propagation_document)
-            print(f"SIR propagation log saved to MongoDB with ID: {propagation_id}")
+            print(f"SIR propagation log saved to MongoDB with ID: {propagation_id}, log stored in GridFS: {log_file_id}")
         except Exception as mongo_error:
             print(f"Error saving to MongoDB: {str(mongo_error)}")
             raise HTTPException(500, detail=f"Error saving propagation log to MongoDB: {str(mongo_error)}")
@@ -434,8 +531,20 @@ async def propagate_ba_sis(
         # Calcular total de nodos en la red
         total_nodes = len(sis_engine.nodes) if sis_engine.nodes else 0
         
-        # Save SIS propagation log to MongoDB
+        # Save SIS propagation log to MongoDB with GridFS for large logs
         propagation_id = str(uuid.uuid4())
+        
+        # Guardar el log en GridFS y obtener su file_id
+        try:
+            log_file_id = save_log_to_gridfs(log, metadata={
+                "propagation_id": propagation_id,
+                "method": "ba-sis",
+                "timestamp": datetime.utcnow()
+            })
+        except Exception as gridfs_error:
+            print(f"Error saving log to GridFS: {str(gridfs_error)}")
+            raise HTTPException(500, detail=f"Error saving propagation log to GridFS: {str(gridfs_error)}")
+        
         propagation_document = {
             "propagation_id": propagation_id,
             "propagation_name": propagation_name,
@@ -454,11 +563,11 @@ async def propagate_ba_sis(
             "new_t": new_t,
             "t_max": t_max,
             "timestamp": datetime.utcnow(),
-            "log": log
+            "log_gridfs_id": log_file_id  # Referencia al log en GridFS en lugar del log completo
         }
         try:
             collection.insert_one(propagation_document)
-            print(f"SIS propagation log saved to MongoDB with ID: {propagation_id}")
+            print(f"SIS propagation log saved to MongoDB with ID: {propagation_id}, log stored in GridFS: {log_file_id}")
         except Exception as mongo_error:
             print(f"Error saving to MongoDB: {str(mongo_error)}")
             raise HTTPException(500, detail=f"Error saving propagation log to MongoDB: {str(mongo_error)}")
@@ -507,8 +616,20 @@ async def propagate_hk_sir(
         # Calcular total de nodos en la red
         total_nodes = len(sir_engine.nodes) if sir_engine.nodes else 0
         
-        # Save Holme-Kim SIR propagation log to MongoDB
+        # Save Holme-Kim SIR propagation log to MongoDB with GridFS for large logs
         propagation_id = str(uuid.uuid4())
+        
+        # Guardar el log en GridFS y obtener su file_id
+        try:
+            log_file_id = save_log_to_gridfs(log, metadata={
+                "propagation_id": propagation_id,
+                "method": "hk-sir",
+                "timestamp": datetime.utcnow()
+            })
+        except Exception as gridfs_error:
+            print(f"Error saving log to GridFS: {str(gridfs_error)}")
+            raise HTTPException(500, detail=f"Error saving propagation log to GridFS: {str(gridfs_error)}")
+        
         propagation_document = {
             "propagation_id": propagation_id,
             "propagation_name": propagation_name,
@@ -527,11 +648,11 @@ async def propagate_hk_sir(
             "new_t": new_t,
             "t_max": t_max,
             "timestamp": datetime.utcnow(),
-            "log": log
+            "log_gridfs_id": log_file_id  # Referencia al log en GridFS en lugar del log completo
         }
         try:
             collection.insert_one(propagation_document)
-            print(f"Holme-Kim SIR propagation log saved to MongoDB with ID: {propagation_id}")
+            print(f"Holme-Kim SIR propagation log saved to MongoDB with ID: {propagation_id}, log stored in GridFS: {log_file_id}")
         except Exception as mongo_error:
             print(f"Error saving to MongoDB: {str(mongo_error)}")
             raise HTTPException(500, detail=f"Error saving propagation log to MongoDB: {str(mongo_error)}")
@@ -580,8 +701,20 @@ async def propagate_hk_sis(
         # Calcular total de nodos en la red
         total_nodes = len(sis_engine.nodes) if sis_engine.nodes else 0
         
-        # Save Holme-Kim SIS propagation log to MongoDB
+        # Save Holme-Kim SIS propagation log to MongoDB with GridFS for large logs
         propagation_id = str(uuid.uuid4())
+        
+        # Guardar el log en GridFS y obtener su file_id
+        try:
+            log_file_id = save_log_to_gridfs(log, metadata={
+                "propagation_id": propagation_id,
+                "method": "hk-sis",
+                "timestamp": datetime.utcnow()
+            })
+        except Exception as gridfs_error:
+            print(f"Error saving log to GridFS: {str(gridfs_error)}")
+            raise HTTPException(500, detail=f"Error saving propagation log to GridFS: {str(gridfs_error)}")
+        
         propagation_document = {
             "propagation_id": propagation_id,
             "propagation_name": propagation_name,
@@ -600,11 +733,11 @@ async def propagate_hk_sis(
             "new_t": new_t,
             "t_max": t_max,
             "timestamp": datetime.utcnow(),
-            "log": log
+            "log_gridfs_id": log_file_id  # Referencia al log en GridFS en lugar del log completo
         }
         try:
             collection.insert_one(propagation_document)
-            print(f"Holme-Kim SIS propagation log saved to MongoDB with ID: {propagation_id}")
+            print(f"Holme-Kim SIS propagation log saved to MongoDB with ID: {propagation_id}, log stored in GridFS: {log_file_id}")
         except Exception as mongo_error:
             print(f"Error saving to MongoDB: {str(mongo_error)}")
             raise HTTPException(500, detail=f"Error saving propagation log to MongoDB: {str(mongo_error)}")
@@ -653,8 +786,20 @@ async def propagate_rw_sir(
         # Calcular total de nodos en la red
         total_nodes = len(rw_sir_engine.nodes) if rw_sir_engine.nodes else 0
         
-        # Save Real World SIR propagation log to MongoDB
+        # Save Real World SIR propagation log to MongoDB with GridFS for large logs
         propagation_id = str(uuid.uuid4())
+        
+        # Guardar el log en GridFS y obtener su file_id
+        try:
+            log_file_id = save_log_to_gridfs(log, metadata={
+                "propagation_id": propagation_id,
+                "method": "rw-sir",
+                "timestamp": datetime.utcnow()
+            })
+        except Exception as gridfs_error:
+            print(f"Error saving log to GridFS: {str(gridfs_error)}")
+            raise HTTPException(500, detail=f"Error saving propagation log to GridFS: {str(gridfs_error)}")
+        
         propagation_document = {
             "propagation_id": propagation_id,
             "propagation_name": propagation_name,
@@ -673,11 +818,11 @@ async def propagate_rw_sir(
             "new_t": new_t,
             "t_max": t_max,
             "timestamp": datetime.utcnow(),
-            "log": log
+            "log_gridfs_id": log_file_id  # Referencia al log en GridFS en lugar del log completo
         }
         try:
             collection.insert_one(propagation_document)
-            print(f"Real World SIR propagation log saved to MongoDB with ID: {propagation_id}")
+            print(f"Real World SIR propagation log saved to MongoDB with ID: {propagation_id}, log stored in GridFS: {log_file_id}")
         except Exception as mongo_error:
             print(f"Error saving to MongoDB: {str(mongo_error)}")
             raise HTTPException(500, detail=f"Error saving propagation log to MongoDB: {str(mongo_error)}")
@@ -726,8 +871,20 @@ async def propagate_rw_sis(
         # Calcular total de nodos en la red
         total_nodes = len(rw_sis_engine.nodes) if rw_sis_engine.nodes else 0
         
-        # Save Real World SIS propagation log to MongoDB
+        # Save Real World SIS propagation log to MongoDB with GridFS for large logs
         propagation_id = str(uuid.uuid4())
+        
+        # Guardar el log en GridFS y obtener su file_id
+        try:
+            log_file_id = save_log_to_gridfs(log, metadata={
+                "propagation_id": propagation_id,
+                "method": "rw-sis",
+                "timestamp": datetime.utcnow()
+            })
+        except Exception as gridfs_error:
+            print(f"Error saving log to GridFS: {str(gridfs_error)}")
+            raise HTTPException(500, detail=f"Error saving propagation log to GridFS: {str(gridfs_error)}")
+        
         propagation_document = {
             "propagation_id": propagation_id,
             "propagation_name": propagation_name,
@@ -746,11 +903,11 @@ async def propagate_rw_sis(
             "new_t": new_t,
             "t_max": t_max,
             "timestamp": datetime.utcnow(),
-            "log": log
+            "log_gridfs_id": log_file_id  # Referencia al log en GridFS en lugar del log completo
         }
         try:
             collection.insert_one(propagation_document)
-            print(f"Real World SIS propagation log saved to MongoDB with ID: {propagation_id}")
+            print(f"Real World SIS propagation log saved to MongoDB with ID: {propagation_id}, log stored in GridFS: {log_file_id}")
         except Exception as mongo_error:
             print(f"Error saving to MongoDB: {str(mongo_error)}")
             raise HTTPException(500, detail=f"Error saving propagation log to MongoDB: {str(mongo_error)}")
@@ -767,6 +924,7 @@ async def propagate_rw_sis(
 async def get_reports():
     """
     Obtiene todos los reportes de propagación almacenados en MongoDB.
+    Recupera los logs desde GridFS si están almacenados allí.
     """
     try:
         # Obtener todos los documentos de propagación con todos los campos necesarios
@@ -790,7 +948,8 @@ async def get_reports():
             "pct_modificar": 1,
             "pct_reenviar": 1,
             "pct_ignorar": 1,
-            "log": 1,
+            "log": 1,  # Log directo (para reportes antiguos)
+            "log_gridfs_id": 1,  # Referencia al log en GridFS (para reportes nuevos)
             "k": 1,
             "max_steps": 1,
             "cluster_filtering": 1
@@ -799,6 +958,19 @@ async def get_reports():
         # Procesar los datos para el frontend
         processed_reports = []
         for report in reports:
+            # Recuperar el log desde GridFS si está almacenado allí
+            log_data = None
+            if "log_gridfs_id" in report and report["log_gridfs_id"]:
+                try:
+                    log_data = retrieve_log_from_gridfs(report["log_gridfs_id"])
+                    print(f"Log recuperado desde GridFS para reporte {report.get('_id')}")
+                except Exception as e:
+                    print(f"Error recuperando log desde GridFS para reporte {report.get('_id')}: {str(e)}")
+                    log_data = None
+            elif "log" in report:
+                # Para reportes antiguos que tienen el log directamente en el documento
+                log_data = report.get("log")
+            
             # Usar los campos explícitos si están disponibles, sino usar la lógica de fallback
             network_type = report.get("tipo_red", "unknown")
             propagation_method = report.get("metodo", "unknown")
@@ -848,7 +1020,7 @@ async def get_reports():
                 "pct_modificar": report.get("pct_modificar"),
                 "pct_reenviar": report.get("pct_reenviar"),
                 "pct_ignorar": report.get("pct_ignorar"),
-                "log": report.get("log"),
+                "log": log_data,  # Log recuperado desde GridFS o directamente del documento
                 "k": report.get("k"),
                 "max_steps": report.get("max_steps"),
                 "cluster_filtering": report.get("cluster_filtering"),
