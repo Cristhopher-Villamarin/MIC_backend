@@ -160,10 +160,19 @@ def _update_vector(prev_vec: np.ndarray, new_vec: np.ndarray, alpha: float, meth
     Returns:
         Vector actualizado.
     """
+    # Usamos pandas para aprovechar ewm (EMA) y rolling (SMA)
+    df = pd.DataFrame([prev_vec, new_vec], columns=EMOTION_COLS)
+
     if method == "ema":
-        return alpha * new_vec + (1.0 - alpha) * prev_vec
+        # alpha es obligatorio para EMA
+        if alpha is None:
+            raise ValueError("El método EMA requiere un valor de alpha")
+        updated = df.ewm(alpha=alpha, adjust=False).mean().iloc[-1]
+        return updated.to_numpy(dtype=float)
     elif method == "sma":
-        return (prev_vec + new_vec) / 2.0
+        # Media móvil simple 
+        updated = df.rolling(window=2, min_periods=1).mean().iloc[-1]
+        return updated.to_numpy(dtype=float)
     else:
         raise ValueError(f"Método no reconocido: {method}. Use 'ema' o 'sma'.")
 
