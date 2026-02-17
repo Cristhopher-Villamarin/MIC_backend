@@ -96,24 +96,24 @@ def _col(prefix: str) -> List[str]:
     return [f"{prefix}_{c}" for c in EMOTION_COLS]
 
 DEFAULT_ALPHA_BY_PROFILE: Dict[str, float] = {
-    "High-Credibility Informant": 0.3,
-    "Emotionally-Driven Amplifier": 0.8,
-    "Mobilisation-Oriented Catalyst": 0.7,
-    "Emotionally Exposed Participant": 0.6,
+    "Informante Altamente Creíble": 0.3,
+    "Amplificador Impulsado por Emociones": 0.8,
+    "Catalizador Orientado a la Movilización": 0.7,
+    "Participante Emocionalmente Expuesto": 0.6,
 }
 
 DEFAULT_THRESHOLDS: Dict[str, Dict[str, float]] = {
-    "High-Credibility Informant": {"forward": 0.8, "modify": 0.2, "ignore": 0.05},
-    "Emotionally-Driven Amplifier": {"forward": 0.95, "modify": 0.6, "ignore": 0.1},
-    "Mobilisation-Oriented Catalyst": {"forward": 0.6, "modify": 0.7, "ignore": 0.3},
-    "Emotionally Exposed Participant": {"forward": 0.3, "modify": 0.4, "ignore": 0.7},
+    "Informante Altamente Creíble": {"reenviar": 0.8, "modificar": 0.2, "ignorar": 0.05},
+    "Amplificador Impulsado por Emociones": {"reenviar": 0.95, "modificar": 0.6, "ignorar": 0.1},
+    "Catalizador Orientado a la Movilización": {"reenviar": 0.6, "modificar": 0.7, "ignorar": 0.3},
+    "Participante Emocionalmente Expuesto": {"reenviar": 0.3, "modificar": 0.4, "ignorar": 0.7},
 }
 
 def _decision(profile: str, sim_in: float, sim_out: float, thresholds: Dict[str, float]) -> str:
-    forward_threshold = thresholds.get("forward", DEFAULT_THRESHOLDS[profile]["forward"])
-    modify_threshold = thresholds.get("modify", DEFAULT_THRESHOLDS[profile]["modify"])
+    forward_threshold = thresholds.get("reenviar", DEFAULT_THRESHOLDS[profile]["reenviar"])
+    modify_threshold = thresholds.get("modificar", DEFAULT_THRESHOLDS[profile]["modificar"])
     
-    if profile == "High-Credibility Informant":
+    if profile == "Informante Altamente Creíble":
         return (
             "reenviar"
             if (sim_in > forward_threshold and sim_out > forward_threshold)
@@ -121,7 +121,7 @@ def _decision(profile: str, sim_in: float, sim_out: float, thresholds: Dict[str,
             if (sim_in > modify_threshold and sim_out > modify_threshold)
             else "ignorar"
         )
-    if profile == "Emotionally-Driven Amplifier":
+    if profile == "Amplificador Impulsado por Emociones":
         return (
             "reenviar"
             if (sim_in > forward_threshold and sim_out > forward_threshold)
@@ -129,7 +129,7 @@ def _decision(profile: str, sim_in: float, sim_out: float, thresholds: Dict[str,
             if (sim_in > modify_threshold and sim_out > modify_threshold)
             else "ignorar"
         )
-    if profile == "Mobilisation-Oriented Catalyst":
+    if profile == "Catalizador Orientado a la Movilización":
         return (
             "reenviar"
             if (sim_in > forward_threshold and sim_out > forward_threshold)
@@ -137,7 +137,7 @@ def _decision(profile: str, sim_in: float, sim_out: float, thresholds: Dict[str,
             if (sim_in > modify_threshold and sim_out > modify_threshold)
             else "ignorar"
         )
-    if profile == "Emotionally Exposed Participant":
+    if profile == "Participante Emocionalmente Expuesto":
       return (
             "reenviar"
             if (sim_in > forward_threshold and sim_out > forward_threshold)
@@ -218,13 +218,13 @@ class PropagationEngine:
 
         for user, row in states_df.iterrows():
             perfil = (
-                "High-Credibility Informant"
+                "Informante Altamente Creíble"
                 if row["cluster"] == 0
-                else "Emotionally-Driven Amplifier"
+                else "Amplificador Impulsado por Emociones"
                 if row["cluster"] == 1
-                else "Mobilisation-Oriented Catalyst"
+                else "Catalizador Orientado a la Movilización"
                 if row["cluster"] == 2
-                else "Emotionally Exposed Participant"
+                else "Participante Emocionalmente Expuesto"
             )
             self.state_in[user] = row[_col("in")].to_numpy(dtype=float)
             self.state_out[user] = row[_col("out")].to_numpy(dtype=float)
